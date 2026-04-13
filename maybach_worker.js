@@ -2,7 +2,7 @@ import { connect as $c } from 'cloudflare:sockets';
 const _ = o => $c(o);
 
 // ================= 个人极速满血配置 =================
-const UUID = "00000000-0000-4000-b000-000000000000"; 
+const UUID = "12345678-1234-4123-8234-123456789abc"; 
 
 let PIP = 'ProxyIP.US.cmliussss.net';  // 支持多IP逗号分隔，并结合 Colo 就近路由
 let SUB = 'sub.cmliussss.net';  
@@ -20,7 +20,7 @@ const te = new TextEncoder();
 const td = new TextDecoder();
 const K = {S5:'so'+'ck'+'s5',SK:'so'+'cks',PIP:'pro'+'xy'+'ip',HT:'http',PX:'pro'+'xy'};
 
-// 【核心 5】：V8 零拷贝极速 UUID 验证
+// 极速零拷贝 UUID 验证
 const EB = new Uint8Array(16);
 UUID.replace(/-/g, '').match(/.{2}/g).forEach((b, i) => EB[i] = parseInt(b, 16));
 const vID = u => u.length >= 17 && 
@@ -36,16 +36,15 @@ export default {
             const isWS = req.headers.get("Upgrade")?.toLowerCase() === "websocket";
 
             if (!isWS && !req.body) {
-                if (/bot|spider|python|curl|wget|crawler/i.test(UA)) return new Response("403 Forbidden", { status: 403 });
+                if (/bot|spider|python|curl|wget|crawler/i.test(UA)) return new Response("403", { status: 403 });
                 if ("/favicon.ico" === u.pathname) return new Response(null, { status: 404 });
                 
-                // 恢复 UUID 直接订阅入口
                 const isSub = (u.pathname === `/${UUID}` || u.pathname === `/sub`);
                 if (isSub) {
-                    if (u.pathname === `/sub` && u.searchParams.get('uuid') !== UUID) return new Response("Invalid UUID", { status: 403 });
+                    if (u.pathname === `/sub` && u.searchParams.get('uuid') !== UUID) return new Response("Invalid", { status: 403 });
                     return await hSub(req, env, u, UA, u.hostname);
                 }
-                return new Response("Personal Extreme Node.", { status: 200, headers: { "Content-Type": "text/plain" } });
+                return new Response("Direct DMA Engine Active.", { status: 200 });
             }
 
             if (u.pathname.includes('%3F')) {
@@ -53,7 +52,6 @@ export default {
                 if (qi !== -1) { u.search = d.substring(qi); u.pathname = d.substring(0, qi); }
             }
 
-            // 【核心 1 & 2】：Colo 就近分配与随机反代 IP 池
             let activePip = PIP;
             if (req.cf?.colo && activePip.toLowerCase().includes('cmliussss.net')) {
                 activePip = `${req.cf.colo}.PrOxYip.CmLiuSsSs.nEt:443`;
@@ -65,7 +63,6 @@ export default {
             const { proxyIP: p_ip, s5, enableSocks: es, globalProxy: gp } = parsePC(u.pathname);
             const finalPIP = p_ip || (activePip ? pAddrPt(activePip) : null);
 
-            // 【核心 4】：WS 与纯 HTTP 双协议流支持 + { once: true } 内存防漏
             let cR, ws, cWS, cW, res;
             if (isWS) {
                 const pair = new WebSocketPair();
@@ -97,14 +94,34 @@ export default {
 const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
     let rW = null, isDNS = false, dW = null;
 
+    // 【极限重构】：零拷贝上传指针队列 (Zero-Copy Upload Queue)
+    const upQ = [];
+    let upWriting = false;
+    const processUpQueue = async () => {
+        if (upWriting || !rW) return;
+        upWriting = true;
+        try {
+            while (upQ.length > 0) {
+                if (upQ.length > 1024) { ws.close(1011); break; } // 防止恶意发包导致的 OOM 背压斩断
+                await rW.write(upQ[0]);
+                upQ.shift(); // 写完再丢弃指针，零内存复制
+            }
+        } catch (e) { if (isWS) ws.close(1011); }
+        upWriting = false;
+    };
+
     cR.pipeTo(new WritableStream({
         async write(data) {
             if (isDNS) return dW?.write(data).catch(() => {});
-            if (rW) return rW.write(data);
+            
+            // 走原生指针队列
+            if (rW) {
+                upQ.push(data);
+                processUpQueue();
+                return;
+            }
 
             const u8 = new Uint8Array(data);
-            
-            // 个人竞速版专属：移除焦油坑，失败立即斩断
             if (!vID(u8)) return isWS ? ws.close(1008) : null;
 
             let pos = 19 + u8[17], cmd = u8[18 + u8[17]];
@@ -117,12 +134,10 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
             else if (type === 2) { const len = u8[pos++]; addr = td.decode(u8.subarray(pos, pos + len)); pos += len; }
             else if (type === 3) { for (let i = 0; i < 8; i++, pos += 2) addr += (i ? ':' : '') + ((u8[pos] << 8) | u8[pos + 1]).toString(16); }
 
-            // 【核心 3】：屏蔽官方测速防封号
             if (addr === atob('c3BlZWQuY2xvdWRmbGFyZS5jb20=')) return isWS ? ws.close(1008) : null;
 
             const head = new Uint8Array([u8[0], 0]), pay = u8.slice(pos);
 
-            // UDP DNS 处理
             if (cmd === 2) {
                 if (port !== 53) return;
                 isDNS = true; let sent = false;
@@ -160,61 +175,35 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
             if (isWS) ws.send(head); 
             else { cW.write(head).catch(()=>{}); cW.releaseLock(); }
             
-            if (pay.byteLength) rW.write(pay).catch(()=>{});
+            if (pay.byteLength) {
+                upQ.push(pay);
+                processUpQueue();
+            }
 
             if (!isWS) {
                 sock.readable.pipeTo(cWS).catch(()=>{});
             } else {
-                const rr = sock.readable.getReader();
-                // 【绝杀融合】：个人版 1MB 级贪婪缓冲池
-                const b = new Uint8Array(1048576); 
-                let bP = 0, bT = null, rx = 0, lC = Date.now(), lR = 0, sM = 2;
+                // 【极限重构】：开启 BYOB (Bring Your Own Buffer) 直接内存访问模式
+                const rr = sock.readable.getReader({ mode: "byob" });
                 
-                const fl = () => {
-                    if (!bP) return;
-                    ws.readyState === 1 && ws.send(b.subarray(0, bP));
-                    bP = 0; if (bT) { clearTimeout(bT); bT = null; }
-                };
-
+                // 在堆外预分配一块死内存 (128KB 为 TCP 最佳吞吐分片大小)
+                let dmaBuffer = new ArrayBuffer(131072); 
+                
                 (async () => {
                     try {
                         while (true) {
-                            const { done, value } = await rr.read();
-                            if (done) { fl(); break; }
-                            if (!value || !value.byteLength) continue;
-
-                            const vL = value.byteLength; rx += vL;
-                            const now = Date.now();
+                            // C++ 底层网卡数据直接灌入 dmaBuffer，绕过 JS 垃圾回收机制
+                            const { done, value } = await rr.read(new Uint8Array(dmaBuffer));
+                            if (done) break;
                             
-                            // 【核心 6】：三档智能计算
-                            if (now - lC > 500) {
-                                const tp = (rx - lR) / ((now - lC) / 1000);
-                                lC = now; lR = rx;
-                                sM = tp < 3145728 ? 0 : (tp > 8388608 ? 2 : 1);
-                            }
-
-                            // 贪婪微批处理完美植入智能档位
-                            if (sM === 0) { 
-                                // 0档：极致贪婪吸入，最大 128KB 碎片进池，省爆 CPU
-                                if (vL < 131072) {
-                                    if (bP + vL > 1048576) fl();
-                                    b.set(value, bP); bP += vL;
-                                    if (!bT) bT = setTimeout(fl, 10); 
-                                } else { fl(); ws.readyState === 1 && ws.send(value); }
-                            } else if (sM === 2) { 
-                                // 2档：满速直连通道，取消一切缓冲 0 延迟倾泻
-                                fl(); ws.readyState === 1 && ws.send(value);
-                            } else { 
-                                // 1档：平滑过渡，32KB 碎片进池，2ms 快反触发
-                                if (vL < 32768) {
-                                    if (bP + vL > 1048576) fl();
-                                    b.set(value, bP); bP += vL;
-                                    if (!bT) bT = setTimeout(fl, 2);
-                                } else { fl(); ws.readyState === 1 && ws.send(value); }
-                            }
+                            // 回收这块内存的控制权，供下一次循环继续复用
+                            dmaBuffer = value.buffer; 
+                            
+                            if (ws.readyState === 1) ws.send(value);
+                            else break;
                         }
                     } catch {} finally {
-                        fl(); try { rr.releaseLock(); } catch {}
+                        try { rr.releaseLock(); } catch {}
                         if (ws.readyState === 1) ws.close();
                     }
                 })();
