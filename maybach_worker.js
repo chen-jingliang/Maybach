@@ -1,16 +1,16 @@
 /**
- * Date: 2026-04-13
- * Version: 1.0.0
- * Description: Personal Extreme Node - Direct DMA Engine (BYOB Zero-Copy) with Dynamic Proxy IP
+ * Date: 2026-04-15
+ * Version: 1.2.1
+ * Description: Fixed True Latency (-1) Bug. Perfect Hybrid of Fast-Path Handshake & stallTCP Engine.
  */
 
 import { connect as $c } from 'cloudflare:sockets';
 const _ = o => $c(o);
 
-// ================= 个人极速满血配置 =================
+// ================= 个人极速配置 =================
 const UUID = "00000000-0000-4000-b000-000000000000"; 
 
-let PIP = 'ProxyIP.CMLiussss.net';  // 默认内置兜底 ProxyIP，支持自动识别 Colo
+let PIP = 'ProxyIP.CMLiussss.net';  
 let SUB = 'sub.cmliussss.net';  
 let SUBAPI = 'https://subapi.cmliussss.net';  
 let SUBINI = 'https://raw.githubusercontent.com/cmliu/ACL4SSR/main/Clash/config/ACL4SSR_Online_Full_MultiMode.ini'; 
@@ -35,6 +35,23 @@ const vID = u => u.length >= 17 &&
     u[9]===EB[8] && u[10]===EB[9] && u[11]===EB[10] && u[12]===EB[11] && 
     u[13]===EB[12] && u[14]===EB[13] && u[15]===EB[14] && u[16]===EB[15];
 
+// ================= stallTCP 核心：内存池 =================
+class Pool {
+    constructor() { this.buf = new ArrayBuffer(16384); this.ptr = 0; this.pool = []; this.max = 8; this.large = false; }
+    alloc = s => {
+        if (s <= 4096 && s <= 16384 - this.ptr) { const v = new Uint8Array(this.buf, this.ptr, s); this.ptr += s; return v; } const r = this.pool.pop();
+        if (r && r.byteLength >= s) return new Uint8Array(r.buffer, 0, s); return new Uint8Array(s);
+    };
+    free = b => {
+        if (b.buffer === this.buf) { this.ptr = Math.max(0, this.ptr - b.length); return; }
+        if (this.pool.length < this.max && b.byteLength >= 1024) this.pool.push(b);
+    }; 
+    enableLarge = () => { this.large = true; }; 
+    reset = () => { this.ptr = 0; this.pool.length = 0; this.large = false; };
+}
+
+const MAX_PENDING = 2097152, KEEPALIVE = 15000, STALL_TO = 8000, MAX_STALL = 12, MAX_RECONN = 24;
+
 export default {
     async fetch(req, env, ctx) {
         try {
@@ -50,7 +67,7 @@ export default {
                     if (u.pathname === `/sub` && u.searchParams.get('uuid') !== UUID) return new Response("Invalid", { status: 403 });
                     return await hSub(req, env, u, UA, u.hostname);
                 }
-                return new Response("Direct DMA Engine Active.", { status: 200 });
+                return new Response("stallTCP Engine v1.2.1 Active.", { status: 200 });
             }
 
             if (u.pathname.includes('%3F')) {
@@ -67,7 +84,6 @@ export default {
             }
             
             const { proxyIP: p_ip, s5, enableSocks: es, globalProxy: gp } = parsePC(u.pathname);
-            // 优先使用路径 /p= 动态传入的 IP，如果没有则使用兜底 activePip
             const finalPIP = p_ip || (activePip ? pAddrPt(activePip) : null);
 
             let cR, ws, cWS, cW, res;
@@ -99,118 +115,202 @@ export default {
 };
 
 const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
-    let rW = null, isDNS = false, dW = null;
+    const pool = new Pool(); 
+    let sock, w, r, inf, first = true, isDNS = false, udpWriter = null;
+    let rxBytes = 0, stalls = 0, reconns = 0, lastAct = Date.now(), conn = false, reading = false;
+    const tmrs = {}, pend = [];
+    let pendBytes = 0, score = 1.0, lastChk = Date.now(), lastRx = 0, succ = 0, fail = 0;
+    let stats = { tot: 0, cnt: 0, big: 0, win: 0, ts: Date.now() }; 
+    let mode = 'direct', avgSz = 0, tputs = [];
 
-    // 零拷贝上传指针队列 (Zero-Copy Upload Queue)
-    const upQ = [];
-    let upWriting = false;
-    const processUpQueue = async () => {
-        if (upWriting || !rW) return;
-        upWriting = true;
-        try {
-            while (upQ.length > 0) {
-                if (upQ.length > 1024) { ws.close(1011); break; }
-                await rW.write(upQ[0]);
-                upQ.shift(); 
+    const updateMode = s => {
+        stats.tot += s; stats.cnt++; if (s > 8192) stats.big++; avgSz = avgSz * 0.9 + s * 0.1; const now = Date.now();
+        if (now - stats.ts > 1000) {
+            const rate = stats.win; tputs.push(rate); if (tputs.length > 5) tputs.shift(); stats.win = s; stats.ts = now;
+            const avg = tputs.reduce((a, b) => a + b, 0) / tputs.length;
+            if (stats.cnt >= 20) {
+                if (avg > 20971520 && avgSz > 16384) { if (mode !== 'buffered') { mode = 'buffered'; pool.enableLarge(); } }
+                else if (avg < 10485760 || avgSz < 8192) { if (mode !== 'direct') mode = 'direct'; }
+                else { if (mode !== 'adaptive') mode = 'adaptive'; }
             }
-        } catch (e) { if (isWS) ws.close(1011); }
-        upWriting = false;
+        } else { stats.win += s; }
     };
 
-    cR.pipeTo(new WritableStream({
-        async write(data) {
-            if (isDNS) return dW?.write(data).catch(() => {});
-            
-            if (rW) {
-                upQ.push(data);
-                processUpQueue();
-                return;
+    const setupUDP = (header) => {
+        let sent = false;
+        const { readable, writable } = new TransformStream({
+            transform(chk, ctrl) {
+                const c = new Uint8Array(chk);
+                for (let i = 0; i < c.length;) {
+                    const l = (c[i] << 8) | c[i + 1];
+                    ctrl.enqueue(c.subarray(i + 2, i + 2 + l)); i += 2 + l;
+                }
             }
-
-            const u8 = new Uint8Array(data);
-            if (!vID(u8)) return isWS ? ws.close(1008) : null;
-
-            let pos = 19 + u8[17], cmd = u8[18 + u8[17]];
-            if (cmd !== 1 && cmd !== 2) return;
-
-            const port = (u8[pos] << 8) | u8[pos + 1], type = u8[pos + 2];
-            pos += 3; let addr = '';
-
-            if (type === 1) { addr = u8.slice(pos, pos + 4).join('.'); pos += 4; }
-            else if (type === 2) { const len = u8[pos++]; addr = td.decode(u8.subarray(pos, pos + len)); pos += len; }
-            else if (type === 3) { for (let i = 0; i < 8; i++, pos += 2) addr += (i ? ':' : '') + ((u8[pos] << 8) | u8[pos + 1]).toString(16); }
-
-            if (addr === atob('c3BlZWQuY2xvdWRmbGFyZS5jb20=')) return isWS ? ws.close(1008) : null;
-
-            const head = new Uint8Array([u8[0], 0]), pay = u8.slice(pos);
-
-            if (cmd === 2) {
-                if (port !== 53) return;
-                isDNS = true; let sent = false;
-                const { readable, writable } = new TransformStream({
-                    transform(chk, ctrl) {
-                        const c = new Uint8Array(chk);
-                        for (let i = 0; i < c.length;) {
-                            const l = (c[i] << 8) | c[i + 1];
-                            ctrl.enqueue(c.subarray(i + 2, i + 2 + l)); i += 2 + l;
-                        }
+        });
+        readable.pipeTo(new WritableStream({
+            async write(q) {
+                try {
+                    const res = await fetch('https://1.1.1.1/dns-query', { method: 'POST', headers: { 'content-type': 'application/dns-message' }, body: q, cf:{cacheTtl:3600} });
+                    if (res.ok) {
+                        const r8 = new Uint8Array(await res.arrayBuffer());
+                        const out = new Uint8Array([...(sent ? [] : header), r8.length >> 8, r8.length & 0xff, ...r8]);
+                        isWS && ws.readyState===1 ? ws.send(out) : (!isWS && cW && cW.write(out).catch(()=>{}));
+                        sent = true;
                     }
-                });
-                readable.pipeTo(new WritableStream({
-                    async write(q) {
-                        try {
-                            const r = await fetch('https://1.1.1.1/dns-query', { method: 'POST', headers: { 'content-type': 'application/dns-message' }, body: q });
-                            if (r.ok) {
-                                const r8 = new Uint8Array(await r.arrayBuffer());
-                                const out = new Uint8Array([...(sent ? [] : head), r8.length >> 8, r8.length & 0xff, ...r8]);
-                                isWS ? ws.send(out) : cW.write(out).catch(()=>{}); sent = true;
-                            }
-                        } catch {}
-                    }
-                })).catch(()=>{});
-                dW = writable.getWriter(); dW.write(pay).catch(()=>{});
-                return;
+                } catch {}
             }
+        })).catch(()=>{});
+        udpWriter = writable.getWriter();
+    };
 
-            let sock;
-            try { sock = await tC(addr, port, type, pip, s5, es, gp); } catch {}
-
-            if (!sock) { isWS ? ws.close(1011) : cW?.close(); return; }
-            rW = sock.writable.getWriter();
-            
-            if (isWS) ws.send(head); 
-            else { cW.write(head).catch(()=>{}); cW.releaseLock(); }
-            
-            if (pay.byteLength) {
-                upQ.push(pay);
-                processUpQueue();
-            }
-
-            if (!isWS) {
-                sock.readable.pipeTo(cWS).catch(()=>{});
-            } else {
-                // BYOB (Bring Your Own Buffer) 直接内存访问模式
-                const rr = sock.readable.getReader({ mode: "byob" });
-                let dmaBuffer = new ArrayBuffer(131072); 
+    const readLoop = async () => {
+        if (reading) return; reading = true; let batch = [], bSz = 0, bTmr = null;
+        const flush = () => {
+            if (!bSz) return; 
+            const m = new Uint8Array(bSz); let p = 0;
+            for (const c of batch) { m.set(c, p); p += c.length; }
+            if (isWS && ws.readyState === 1) ws.send(m);
+            else if (!isWS && cW) cW.write(m).catch(()=>{});
+            batch = []; bSz = 0; if (bTmr) { clearTimeout(bTmr); bTmr = null; }
+        };
+        try {
+            while (true) {
+                if (pendBytes > MAX_PENDING) { await new Promise(r => setTimeout(r, 100)); continue; }
+                const { done, value: v } = await r.read();
                 
-                (async () => {
-                    try {
-                        while (true) {
-                            const { done, value } = await rr.read(new Uint8Array(dmaBuffer));
-                            if (done) break;
-                            dmaBuffer = value.buffer; 
-                            
-                            if (ws.readyState === 1) ws.send(value);
-                            else break;
-                        }
-                    } catch {} finally {
-                        try { rr.releaseLock(); } catch {}
-                        if (ws.readyState === 1) ws.close();
+                if (v?.length) {
+                    rxBytes += v.length; lastAct = Date.now(); stalls = 0; updateMode(v.length); const now = Date.now();
+                    if (now - lastChk > 5000) {
+                        const el = now - lastChk, by = rxBytes - lastRx, tp = by / el;
+                        if (tp > 500) score = Math.min(1.0, score + 0.05);
+                        else if (tp < 50) score = Math.max(0.1, score - 0.05);
+                        lastChk = now; lastRx = rxBytes;
                     }
-                })();
+                    
+                    if (mode === 'buffered') {
+                        if (v.length < 32768) {
+                            batch.push(v); bSz += v.length;
+                            if (bSz >= 131072) flush(); else if (!bTmr) bTmr = setTimeout(flush, avgSz > 16384 ? 5 : 20);
+                        } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
+                    } else if (mode === 'adaptive') {
+                        if (v.length < 4096) {
+                            batch.push(v); bSz += v.length;
+                            if (bSz >= 32768) flush(); else if (!bTmr) bTmr = setTimeout(flush, 15);
+                        } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
+                    } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
+                } 
+                if (done) { flush(); reading = false; reconn(); break; }
             }
+        } catch (e) { flush(); if (bTmr) clearTimeout(bTmr); reading = false; fail++; reconn(); }
+    };
+
+    const establish = async () => {
+        try {
+            sock = await tC(inf.host, inf.port, inf.addressType, pip, s5, es, gp); if (sock.opened) await sock.opened;
+            w = sock.writable.getWriter(); r = sock.readable.getReader(); 
+            
+            // 【致命 Bug 修复】：建立连接的瞬间立刻发回 [0, 0] 响应，杜绝测真连接 -1 假死
+            if (!inf.sentHeader) {
+                if (isWS && ws.readyState === 1) ws.send(inf.header);
+                else if (!isWS && cW) { cW.write(inf.header).catch(()=>{}); cW.releaseLock(); }
+                inf.sentHeader = true;
+            }
+
+            const bt = pend.splice(0, pend.length); 
+            for (const b of bt) { await w.write(b); pendBytes -= b.length; pool.free(b); }
+            conn = false; reconns = 0; score = Math.min(1.0, score + 0.15); succ++; lastAct = Date.now(); readLoop();
+        } catch (e) { conn = false; fail++; score = Math.max(0.1, score - 0.2); reconn(); }
+    };
+
+    const reconn = async () => {
+        if (!inf || (isWS && ws.readyState !== 1)) { cleanup(); if(isWS) ws.close(1011); return; }
+        if (reconns >= MAX_RECONN) { cleanup(); if(isWS) ws.close(1011); return; }
+        if (score < 0.3 && reconns > 5 && Math.random() > 0.6) { cleanup(); if(isWS) ws.close(1011); return; }
+        if (conn) return; reconns++; 
+        let d = Math.max(50, Math.floor(Math.min(50 * Math.pow(1.5, reconns - 1), 3000) * (1.5 - score * 0.5) + (Math.random() - 0.5) * 600));
+        try {
+            cleanSock();
+            if (pendBytes > MAX_PENDING * 2) { while (pendBytes > MAX_PENDING && pend.length > 5) { const dp = pend.shift(); pendBytes -= dp.length; pool.free(dp); } }
+            await new Promise(res => setTimeout(res, d)); conn = true;
+            sock = await tC(inf.host, inf.port, inf.addressType, pip, s5, es, gp); if (sock.opened) await sock.opened;
+            w = sock.writable.getWriter(); r = sock.readable.getReader(); 
+            
+            if (!inf.sentHeader) {
+                if (isWS && ws.readyState === 1) ws.send(inf.header);
+                else if (!isWS && cW) { cW.write(inf.header).catch(()=>{}); cW.releaseLock(); }
+                inf.sentHeader = true;
+            }
+
+            const bt = pend.splice(0, pend.length); 
+            for (const b of bt) { await w.write(b); pendBytes -= b.length; pool.free(b); }
+            conn = false; reconns = 0; score = Math.min(1.0, score + 0.15); succ++; stalls = 0; lastAct = Date.now(); readLoop();
+        } catch (e) { 
+            conn = false; fail++; score = Math.max(0.1, score - 0.2);
+            if (reconns < MAX_RECONN && (!isWS || ws.readyState === 1)) setTimeout(reconn, 500); else { cleanup(); if(isWS) ws.close(1011); }
         }
-    })).catch(()=>{});
+    };
+
+    const startTmrs = () => {
+        tmrs.ka = setInterval(async () => { if (!conn && w && Date.now() - lastAct > KEEPALIVE) { try { await w.write(new Uint8Array(0)); lastAct = Date.now(); } catch { reconn(); } } }, KEEPALIVE / 3);
+        tmrs.hc = setInterval(() => { if (!conn && stats.tot > 0 && Date.now() - lastAct > STALL_TO) { stalls++; if (stalls >= MAX_STALL) { if (reconns < MAX_RECONN) { stalls = 0; reconn(); } else { cleanup(); if(isWS) ws.close(1011); } } } }, STALL_TO / 2);
+    };
+
+    const cleanSock = () => { reading = false; try { w?.releaseLock(); r?.releaseLock(); sock?.close(); } catch {} };
+    const cleanup = () => {
+        Object.values(tmrs).forEach(clearInterval); cleanSock();
+        while (pend.length) pool.free(pend.shift());
+        pendBytes = 0; stats = { tot: 0, cnt: 0, big: 0, win: 0, ts: Date.now() }; mode = 'direct'; avgSz = 0; tputs = []; pool.reset();
+    };
+
+    const processData = async (data) => {
+        try {
+            if (first) {
+                first = false; const b = new Uint8Array(data);
+                if (!vID(b)) throw new Error('Auth failed');
+                
+                let pos = 19 + b[17], cmd = b[18 + b[17]];
+                if (cmd !== 1 && cmd !== 2) return;
+
+                const port = (b[pos] << 8) | b[pos + 1], type = b[pos + 2];
+                pos += 3; let addr = '';
+
+                if (type === 1) { addr = b.slice(pos, pos + 4).join('.'); pos += 4; } 
+                else if (type === 2) { const len = b[pos++]; addr = td.decode(b.subarray(pos, pos + len)); pos += len; } 
+                else if (type === 3) { for (let i = 0; i < 8; i++, pos += 2) addr += (i ? ':' : '') + ((b[pos] << 8) | b[pos + 1]).toString(16); }
+
+                if (addr === "speed.cloudflare.com") throw new Error('Blocked');
+
+                const header = new Uint8Array([b[0], 0]);
+                const payload = b.slice(pos);
+                inf = { host: addr, port, addressType: type, cmd, header, sentHeader: false };
+
+                if (cmd === 2) {
+                    if (port !== 53) return;
+                    isDNS = true; setupUDP(header); udpWriter.write(payload).catch(()=>{}); return;
+                }
+
+                conn = true;
+                if (payload.byteLength) { const buf = pool.alloc(payload.byteLength); buf.set(new Uint8Array(payload)); pend.push(buf); pendBytes += buf.length; }
+                startTmrs(); establish();
+            } else {
+                if (isDNS) return udpWriter.write(data).catch(()=>{});
+                lastAct = Date.now();
+                if (conn || !w) {
+                    const buf = pool.alloc(data.byteLength); buf.set(new Uint8Array(data)); pend.push(buf); pendBytes += data.byteLength;
+                } else {
+                    try { await w.write(data); } catch {
+                        const buf = pool.alloc(data.byteLength); buf.set(new Uint8Array(data)); pend.push(buf); pendBytes += data.byteLength; reconn();
+                    }
+                }
+            }
+        } catch (err) { cleanup(); if(isWS) ws.close(1006); }
+    };
+
+    if (isWS) {
+        cR.pipeTo(new WritableStream({ write: processData })).catch(()=>{});
+    } else {
+        cR.pipeTo(new WritableStream({ write: processData })).catch(()=>{});
+    }
 };
 
 // ================= 外壳：核心辅助与动态反代路由解析 =================
@@ -235,7 +335,6 @@ function parsePC(p){
   const gm=p.match(new RegExp(`(${K.SK}5?|https?):\\/\\/([^/#?]+)`,'i'));
   if(gm){gp={type:gm[1].toLowerCase().includes('5')||gm[1].includes(K.SK)?K.S5:'http',cfg:pS5(gm[2])};return{proxyIP:pip,s5,enableSocks:es,globalProxy:gp};}
   
-  // 核心变更：全面支持 /p= 动态传入单 IP 或逗号分隔随机池
   const im=p.match(/(?:^|\/)(?:proxyip|ip|p)[=\/]([^?#\/]+)/i);
   if(im){
     let val = im[1];
