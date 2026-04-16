@@ -1,14 +1,14 @@
 /**
- * Date: 2026-04-15
- * Version: 1.2.1
- * Description: Fixed True Latency (-1) Bug. Perfect Hybrid of Fast-Path Handshake & stallTCP Engine.
+ * Date: 2026-04-16
+ * Version: 2.5.0 (Ultimate Streaming & External Sub Edition)
+ * Description: Deeply optimized core proxy engine (Zero-latency bypass, Memory leak fixes, Strict backpressure for 20GB+ files) merged with stable external subscription APIs (sub.cmliussss.net).
  */
 
 import { connect as $c } from 'cloudflare:sockets';
 const _ = o => $c(o);
 
 // ================= 个人极速配置 =================
-const UUID = "00000000-0000-4000-b000-000000000000"; 
+const UUID = ""; 
 
 let PIP = 'ProxyIP.CMLiussss.net';  
 let SUB = 'sub.cmliussss.net';  
@@ -35,11 +35,12 @@ const vID = u => u.length >= 17 &&
     u[9]===EB[8] && u[10]===EB[9] && u[11]===EB[10] && u[12]===EB[11] && 
     u[13]===EB[12] && u[14]===EB[13] && u[15]===EB[14] && u[16]===EB[15];
 
-// ================= stallTCP 核心：内存池 =================
+// ================= stallTCP 核心：内存池 (增强抗内存泄露) =================
 class Pool {
-    constructor() { this.buf = new ArrayBuffer(16384); this.ptr = 0; this.pool = []; this.max = 8; this.large = false; }
+    constructor() { this.buf = new ArrayBuffer(16384); this.ptr = 0; this.pool = []; this.max = 12; this.large = false; }
     alloc = s => {
-        if (s <= 4096 && s <= 16384 - this.ptr) { const v = new Uint8Array(this.buf, this.ptr, s); this.ptr += s; return v; } const r = this.pool.pop();
+        if (s <= 4096 && s <= 16384 - this.ptr) { const v = new Uint8Array(this.buf, this.ptr, s); this.ptr += s; return v; } 
+        const r = this.pool.pop();
         if (r && r.byteLength >= s) return new Uint8Array(r.buffer, 0, s); return new Uint8Array(s);
     };
     free = b => {
@@ -47,10 +48,11 @@ class Pool {
         if (this.pool.length < this.max && b.byteLength >= 1024) this.pool.push(b);
     }; 
     enableLarge = () => { this.large = true; }; 
-    reset = () => { this.ptr = 0; this.pool.length = 0; this.large = false; };
+    reset = () => { this.ptr = 0; this.pool = []; this.large = false; }; // 彻底切断引用，允许GC回收
 }
 
-const MAX_PENDING = 2097152, KEEPALIVE = 15000, STALL_TO = 8000, MAX_STALL = 12, MAX_RECONN = 24;
+// 提升至极限的参数：保护大文件不断流，适应视频分块
+const MAX_PENDING = 16777216, KEEPALIVE = 15000, STALL_TO = 5000, MAX_STALL = 3, MAX_RECONN = 24;
 
 export default {
     async fetch(req, env, ctx) {
@@ -62,12 +64,13 @@ export default {
                 if (/bot|spider|python|curl|wget|crawler/i.test(UA)) return new Response("403", { status: 403 });
                 if ("/favicon.ico" === u.pathname) return new Response(null, { status: 404 });
                 
+                // 订阅触发点
                 const isSub = (u.pathname === `/${UUID}` || u.pathname === `/sub`);
                 if (isSub) {
                     if (u.pathname === `/sub` && u.searchParams.get('uuid') !== UUID) return new Response("Invalid", { status: 403 });
                     return await hSub(req, env, u, UA, u.hostname);
                 }
-                return new Response("stallTCP Engine v1.2.1 Active.", { status: 200 });
+                return new Response("Ultimate Streaming Engine v2.5.0 Active.", { status: 200 });
             }
 
             if (u.pathname.includes('%3F')) {
@@ -83,7 +86,7 @@ export default {
                 activePip = arr[Math.floor(Math.random() * arr.length)];
             }
             
-            const { proxyIP: p_ip, s5, enableSocks: es, globalProxy: gp } = parsePC(u.pathname);
+            const { proxyIP: p_ip, s5, es, gp } = parsePC(u.pathname);
             const finalPIP = p_ip || (activePip ? pAddrPt(activePip) : null);
 
             let cR, ws, cWS, cW, res;
@@ -122,6 +125,7 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
     let pendBytes = 0, score = 1.0, lastChk = Date.now(), lastRx = 0, succ = 0, fail = 0;
     let stats = { tot: 0, cnt: 0, big: 0, win: 0, ts: Date.now() }; 
     let mode = 'direct', avgSz = 0, tputs = [];
+    let isReconnecting = false;
 
     const updateMode = s => {
         stats.tot += s; stats.cnt++; if (s > 8192) stats.big++; avgSz = avgSz * 0.9 + s * 0.1; const now = Date.now();
@@ -130,7 +134,7 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
             const avg = tputs.reduce((a, b) => a + b, 0) / tputs.length;
             if (stats.cnt >= 20) {
                 if (avg > 20971520 && avgSz > 16384) { if (mode !== 'buffered') { mode = 'buffered'; pool.enableLarge(); } }
-                else if (avg < 10485760 || avgSz < 8192) { if (mode !== 'direct') mode = 'direct'; }
+                else if (avg < 5242880 || avgSz < 8192) { if (mode !== 'direct') mode = 'direct'; }
                 else { if (mode !== 'adaptive') mode = 'adaptive'; }
             }
         } else { stats.win += s; }
@@ -165,6 +169,7 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
 
     const readLoop = async () => {
         if (reading) return; reading = true; let batch = [], bSz = 0, bTmr = null;
+        
         const flush = () => {
             if (!bSz) return; 
             const m = new Uint8Array(bSz); let p = 0;
@@ -173,31 +178,39 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
             else if (!isWS && cW) cW.write(m).catch(()=>{});
             batch = []; bSz = 0; if (bTmr) { clearTimeout(bTmr); bTmr = null; }
         };
+
         try {
             while (true) {
-                if (pendBytes > MAX_PENDING) { await new Promise(r => setTimeout(r, 100)); continue; }
+                // 防内存溢出的严格背压，绝不扔包
+                if (pendBytes > MAX_PENDING) { await new Promise(r => setTimeout(r, 50)); continue; }
                 const { done, value: v } = await r.read();
                 
                 if (v?.length) {
                     rxBytes += v.length; lastAct = Date.now(); stalls = 0; updateMode(v.length); const now = Date.now();
                     if (now - lastChk > 5000) {
                         const el = now - lastChk, by = rxBytes - lastRx, tp = by / el;
-                        if (tp > 500) score = Math.min(1.0, score + 0.05);
-                        else if (tp < 50) score = Math.max(0.1, score - 0.05);
+                        if (tp > 500) score = Math.min(1.0, score + 0.05); else if (tp < 50) score = Math.max(0.1, score - 0.05);
                         lastChk = now; lastRx = rxBytes;
                     }
                     
+                    // 【优化】：微操直通车，彻底消灭 direct 模式下的小包延迟 (极速加载网页/握手)
+                    if (v.length < 2048 || mode === 'direct') {
+                        flush();
+                        if (isWS && ws.readyState === 1) ws.send(v); else if (!isWS && cW) cW.write(v).catch(()=>{});
+                        continue;
+                    }
+
                     if (mode === 'buffered') {
                         if (v.length < 32768) {
                             batch.push(v); bSz += v.length;
-                            if (bSz >= 131072) flush(); else if (!bTmr) bTmr = setTimeout(flush, avgSz > 16384 ? 5 : 20);
+                            if (bSz >= 262144) flush(); else if (!bTmr) bTmr = setTimeout(flush, 5);
                         } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
-                    } else if (mode === 'adaptive') {
+                    } else { // adaptive
                         if (v.length < 4096) {
                             batch.push(v); bSz += v.length;
-                            if (bSz >= 32768) flush(); else if (!bTmr) bTmr = setTimeout(flush, 15);
+                            if (bSz >= 65536) flush(); else if (!bTmr) bTmr = setTimeout(flush, 10);
                         } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
-                    } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
+                    }
                 } 
                 if (done) { flush(); reading = false; reconn(); break; }
             }
@@ -209,7 +222,6 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
             sock = await tC(inf.host, inf.port, inf.addressType, pip, s5, es, gp); if (sock.opened) await sock.opened;
             w = sock.writable.getWriter(); r = sock.readable.getReader(); 
             
-            // 【致命 Bug 修复】：建立连接的瞬间立刻发回 [0, 0] 响应，杜绝测真连接 -1 假死
             if (!inf.sentHeader) {
                 if (isWS && ws.readyState === 1) ws.send(inf.header);
                 else if (!isWS && cW) { cW.write(inf.header).catch(()=>{}); cW.releaseLock(); }
@@ -225,13 +237,15 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
     const reconn = async () => {
         if (!inf || (isWS && ws.readyState !== 1)) { cleanup(); if(isWS) ws.close(1011); return; }
         if (reconns >= MAX_RECONN) { cleanup(); if(isWS) ws.close(1011); return; }
-        if (score < 0.3 && reconns > 5 && Math.random() > 0.6) { cleanup(); if(isWS) ws.close(1011); return; }
-        if (conn) return; reconns++; 
+        if (score < 0.3 && reconns > 8 && Math.random() > 0.6) { cleanup(); if(isWS) ws.close(1011); return; }
+        
+        if (conn || isReconnecting) return; isReconnecting = true; reconns++; 
+        
         let d = Math.max(50, Math.floor(Math.min(50 * Math.pow(1.5, reconns - 1), 3000) * (1.5 - score * 0.5) + (Math.random() - 0.5) * 600));
         try {
-            cleanSock();
-            if (pendBytes > MAX_PENDING * 2) { while (pendBytes > MAX_PENDING && pend.length > 5) { const dp = pend.shift(); pendBytes -= dp.length; pool.free(dp); } }
+            cleanSock(); 
             await new Promise(res => setTimeout(res, d)); conn = true;
+            
             sock = await tC(inf.host, inf.port, inf.addressType, pip, s5, es, gp); if (sock.opened) await sock.opened;
             w = sock.writable.getWriter(); r = sock.readable.getReader(); 
             
@@ -246,8 +260,9 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
             conn = false; reconns = 0; score = Math.min(1.0, score + 0.15); succ++; stalls = 0; lastAct = Date.now(); readLoop();
         } catch (e) { 
             conn = false; fail++; score = Math.max(0.1, score - 0.2);
-            if (reconns < MAX_RECONN && (!isWS || ws.readyState === 1)) setTimeout(reconn, 500); else { cleanup(); if(isWS) ws.close(1011); }
-        }
+            if (reconns < MAX_RECONN && (!isWS || ws.readyState === 1)) setTimeout(() => { isReconnecting = false; reconn(); }, 500); 
+            else { cleanup(); if(isWS) ws.close(1011); }
+        } finally { isReconnecting = false; }
     };
 
     const startTmrs = () => {
@@ -255,7 +270,12 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
         tmrs.hc = setInterval(() => { if (!conn && stats.tot > 0 && Date.now() - lastAct > STALL_TO) { stalls++; if (stalls >= MAX_STALL) { if (reconns < MAX_RECONN) { stalls = 0; reconn(); } else { cleanup(); if(isWS) ws.close(1011); } } } }, STALL_TO / 2);
     };
 
-    const cleanSock = () => { reading = false; try { w?.releaseLock(); r?.releaseLock(); sock?.close(); } catch {} };
+    const cleanSock = () => { 
+        reading = false; 
+        try { r?.cancel(); } catch {} try { w?.abort(); } catch {} try { sock?.close(); } catch {} 
+        r = null; w = null; sock = null;
+    };
+    
     const cleanup = () => {
         Object.values(tmrs).forEach(clearInterval); cleanSock();
         while (pend.length) pool.free(pend.shift());
@@ -277,8 +297,6 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
                 if (type === 1) { addr = b.slice(pos, pos + 4).join('.'); pos += 4; } 
                 else if (type === 2) { const len = b[pos++]; addr = td.decode(b.subarray(pos, pos + len)); pos += len; } 
                 else if (type === 3) { for (let i = 0; i < 8; i++, pos += 2) addr += (i ? ':' : '') + ((b[pos] << 8) | b[pos + 1]).toString(16); }
-
-                if (addr === "speed.cloudflare.com") throw new Error('Blocked');
 
                 const header = new Uint8Array([b[0], 0]);
                 const payload = b.slice(pos);
@@ -306,11 +324,7 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
         } catch (err) { cleanup(); if(isWS) ws.close(1006); }
     };
 
-    if (isWS) {
-        cR.pipeTo(new WritableStream({ write: processData })).catch(()=>{});
-    } else {
-        cR.pipeTo(new WritableStream({ write: processData })).catch(()=>{});
-    }
+    cR.pipeTo(new WritableStream({ write: processData })).catch(()=>{});
 };
 
 // ================= 外壳：核心辅助与动态反代路由解析 =================
@@ -378,11 +392,13 @@ const tC = async (h, p, t, pip, s5, es, gp) => {
   }
 };
 
-// ================= 订阅生成 ECH 相关 =================
+// ================= 外部接口订阅生成与 ECH 相关 =================
 async function _getECH(h){try{const ps=h.split('.'),bs=[];for(const l of ps){const e=new TextEncoder().encode(l);bs.push(e.length,...e);}bs.push(0);const dn=new Uint8Array(bs);const pk=new Uint8Array(12+dn.length+4);const dv=new DataView(pk.buffer);dv.setUint16(0,Math.random()*65535|0);dv.setUint16(2,256);dv.setUint16(4,1);pk.set(dn,12);dv.setUint16(12+dn.length,65);dv.setUint16(14+dn.length,1);const rp=await fetch(ECH_DNS,{method:'POST',headers:{'Content-Type':'application/'+'dns'+'-message',Accept:'application/'+'dns'+'-message'},body:pk});if(!rp.ok)return null;const bf=new Uint8Array(await rp.arrayBuffer());const rv=new DataView(bf.buffer);const qc=rv.getUint16(4),ac=rv.getUint16(6);const sn=p=>{let c=p;while(c<bf.length){const n=bf[c];if(!n)return c+1;if((n&0xC0)===0xC0)return c+2;c+=n+1;}return c+1;};let o=12;for(let i=0;i<qc;i++)o=sn(o)+4;for(let i=0;i<ac&&o<bf.length;i++){o=sn(o);const tp=rv.getUint16(o);o+=2;o+=6;const rl=rv.getUint16(o);o+=2;if(tp===65){const rd=bf.slice(o,o+rl);let p=2;while(p<rd.length){const n=rd[p];if(!n){p++;break;}p+=n+1;}while(p+4<=rd.length){const k=(rd[p]<<8)|rd[p+1],ln=(rd[p+2]<<8)|rd[p+3];p+=4;if(k===5)return'-----BEGIN ECH CONFIGS-----\n'+btoa(String.fromCharCode(...rd.slice(p,p+ln)))+'\n-----END ECH CONFIGS-----';p+=ln;}}o+=rl;}return null;}catch{return null;}}
 const vSB=t=>{try{return Array.isArray(JSON.parse(t).outbounds)}catch{return!1}};
 function pSB(x,echCfg){try{const j=JSON.parse(x),o=j['out'+'bounds']||[];const _vl='vl'+'ess',_vm='vm'+'ess',_fp='fing'+'erpr'+'int';for(const b of o){if(b.type!==_vl&&b.type!==_vm)continue;const mu=b.uuid===UUID||b.server_name===UUID;if(!mu)continue;if(!b.tls)b.tls={};b.tls['ut'+'ls']={enabled:true,[_fp]:FP};if(echCfg){b.tls.ech={enabled:true,config:[echCfg]};}}return JSON.stringify(j);}catch{return x;}}
 function pCL(x,h){try{if(!ECH)return x;let y=x;const _eo='ech'+'-opts',_qsn='query'+'-server'+'-name',_nsp='name'+'server'+'-po'+'licy';if(!/^dns:\s*(?:\n|$)/m.test(y))y='dns:\n  enable: true\n  default-nameserver:\n    - 223.5.5.5\n    - 119.29.29.29\n  use-hosts: true\n  nameserver:\n    - https://sm2.doh.pub/dns-query\n    - https://dns.alidns.com/dns-query\n  fallback:\n    - 8.8.4.4\n    - 208.67.220.220\n  fallback-filter:\n    geoip: true\n    geoip-code: CN\n    ipcidr:\n      - 240.0.0.0/4\n      - 0.0.0.0/32\n    domain:\n      - \'+.google.com\'\n      - \'+.youtube.com\'\n'+y;const ls=y.split('\n');let di=-1,iD=false;for(let i=0;i<ls.length;i++){if(/^dns:\s*$/.test(ls[i])){iD=true;continue;}if(iD&&/^[a-zA-Z]/.test(ls[i])){di=i;break;}}const _bkDoH='https://do'+'h.cm.edu.kg/'+'C'+'ML'+'iu'+'ssss';const ne='    "'+h+'":\n      - '+ECH_DNS+'\n      - '+_bkDoH+'\n    "'+ECH_SNI+'":\n      - '+ECH_DNS+'\n      - '+_bkDoH;if(/^\s{2}nameserver-policy:\s*(?:\n|$)/m.test(y)){y=y.replace(/^(\s{2}nameserver-policy:\s*\n)/m,'$1'+ne+'\n');}else if(di>0){ls.splice(di,0,'  '+_nsp+':',ne);y=ls.join('\n');}else{y+='\n  '+_nsp+':\n'+ne+'\n';}const L=y.split('\n'),R=[];let i=0;while(i<L.length){const l=L[i],tl=l.trim();if(tl.startsWith('- {')&&tl.includes('uuid:')){let fn=l,bc=(l.match(/\{/g)||[]).length-(l.match(/\}/g)||[]).length;while(bc>0&&i+1<L.length){i++;fn+='\n'+L[i];bc+=(L[i].match(/\{/g)||[]).length-(L[i].match(/\}/g)||[]).length;}const um=fn.match(/uuid:\s*([^,}\n]+)/);if(um&&um[1].trim()===UUID.trim()){fn=fn.replace(/client-fingerprint:\s*[^,}\s]+/,'client-fingerprint: chrome');fn=fn.replace(/\}(\s*)$/,`, ${_eo}: {enable: true, ${_qsn}: ${ECH_SNI}}}$1`);}R.push(fn);i++;}else if(tl.startsWith('- name:')){let nl=[l];const bi=l.search(/\S/);i++;while(i<L.length){const nx=L[i],nt=nx.trim();if(!nt){nl.push(nx);i++;break;}if(nx.search(/\S/)<=bi&&nt.startsWith('- '))break;if(nx.search(/\S/)<bi&&nt)break;nl.push(nx);i++;}const um=nl.join('\n').match(/uuid:\s*([^\n]+)/);if(um&&um[1].trim()===UUID.trim()){for(let j=0;j<nl.length;j++){if(/client-fingerprint:/.test(nl[j])){nl[j]=nl[j].replace(/client-fingerprint:\s*\S+/,'client-fingerprint: chrome');break;}}let ii=-1;for(let j=nl.length-1;j>=0;j--)if(nl[j].trim()){ii=j;break;}if(ii>=0){const ind=' '.repeat(bi+2);nl.splice(ii+1,0,ind+_eo+':',ind+'  enable: true',ind+'  '+_qsn+': '+ECH_SNI);}}R.push(...nl);}else{R.push(l);i++;}}return R.join('\n');}catch{return x;}}
+
+// 恢复为依赖外部接口生成的逻辑
 async function hSub(r,c,u,UA,h){
   const flg=u.searchParams.has("flag"),now=Date.now();
   const cr=[['Mi'+'ho'+'mo','mi'+'ho'+'mo'],['Fl'+'Cl'+'ash','fl'+'cl'+'ash'],['Cl'+'ash','cl'+'ash'],['Cl'+'ash','me'+'ta'],['Cl'+'ash','st'+'ash'],['Hi'+'dd'+'ify','hi'+'dd'+'ify'],['Si'+'ng-'+'box','si'+'ng-'+'box'],['Si'+'ng-'+'box','si'+'ng'+'box'],['Si'+'ng-'+'box','s'+'fi'],['Si'+'ng-'+'box','b'+'ox'],['v2'+'ray'+'N/Core','v2'+'ray'],['Su'+'rge','su'+'rge'],['Qu'+'antu'+'mult X','qu'+'antu'+'mult'],['Sha'+'dow'+'roc'+'ket','sha'+'dow'+'roc'+'ket'],['Lo'+'on','lo'+'on'],['Ha'+'pp','ha'+'pp']];
