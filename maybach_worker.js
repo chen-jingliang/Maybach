@@ -1,14 +1,14 @@
 /**
  * Date: 2026-04-16
- * Version: 2.6.2 (Ultimate Streaming & Active Sonar Edition - Max Throughput Optimized)
- * Description: Features Smart Active Probing (Sonar) to detect silent disconnects for long-lived WS connections (Gemini/ChatGPT), while remaining perfectly tolerant of YouTube's chunked video buffering. Includes expanded memory pools and aggressive chunking for global high-latency nodes.
+ * Version: 2.6.3 (Ultimate Streaming & Active Sonar Edition - BBR Pacing Optimized)
+ * Description: Features Smart Active Probing (Sonar) to detect silent disconnects. Introduces BBR-friendly Smooth Pacing to maximize Connection Speed while maintaining excellent Buffer Health.
  */
 
 import { connect as $c } from 'cloudflare:sockets';
 const _ = o => $c(o);
 
 // ================= 个人极速配置 =================
-const UUID = ""; 
+const UUID = "00000000-0000-4000-b000-000000000000"; 
 
 let PIP = 'ProxyIP.CMLiussss.net';  
 let SUB = 'sub.cmliussss.net';  
@@ -35,7 +35,7 @@ const vID = u => u.length >= 17 &&
     u[9]===EB[8] && u[10]===EB[9] && u[11]===EB[10] && u[12]===EB[11] && 
     u[13]===EB[12] && u[14]===EB[13] && u[15]===EB[14] && u[16]===EB[15];
 
-// ================= stallTCP 核心：内存池 (增强抗内存泄露与高吞吐) =================
+// ================= stallTCP 核心：内存池 =================
 class Pool {
     constructor() { this.buf = new ArrayBuffer(131072); this.ptr = 0; this.pool = []; this.max = 32; this.large = false; }
     alloc = s => {
@@ -68,7 +68,7 @@ export default {
                     if (u.pathname === `/sub` && u.searchParams.get('uuid') !== UUID) return new Response("Invalid", { status: 403 });
                     return await hSub(req, env, u, UA, u.hostname);
                 }
-                return new Response("Active Sonar Streaming Engine v2.6.2 (Max Throughput) Active.", { status: 200 });
+                return new Response("Active Sonar Streaming Engine v2.6.3 (BBR Pacing) Active.", { status: 200 });
             }
 
             if (u.pathname.includes('%3F')) {
@@ -132,8 +132,9 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
             const rate = stats.win; tputs.push(rate); if (tputs.length > 5) tputs.shift(); stats.win = s; stats.ts = now;
             const avg = tputs.reduce((a, b) => a + b, 0) / tputs.length;
             if (stats.cnt >= 10) { 
-                if (avg > 10485760 && avgSz > 8192) { if (mode !== 'buffered') { mode = 'buffered'; pool.enableLarge(); } } 
-                else if (avg < 2621440 || avgSz < 4096) { if (mode !== 'direct') mode = 'direct'; } 
+                // 降低触发门槛，更快进入流控模式
+                if (avg > 5242880 && avgSz > 4096) { if (mode !== 'buffered') { mode = 'buffered'; pool.enableLarge(); } } 
+                else if (avg < 1048576) { if (mode !== 'direct') mode = 'direct'; } 
                 else { if (mode !== 'adaptive') mode = 'adaptive'; }
             }
         } else { stats.win += s; }
@@ -197,16 +198,25 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
                         continue;
                     }
 
+                    // 2.6.3 核心：BBR Pacing 流控算法
                     if (mode === 'buffered') {
-                        if (v.length < 65536) { 
+                        // 只拦截小于 16KB 的碎片，大于 16KB 直接放行以维持 TCP 管道压力
+                        if (v.length < 16384) { 
                             batch.push(v); bSz += v.length;
-                            if (bSz >= 524288) flush(); else if (!bTmr) bTmr = setTimeout(flush, 8); 
-                        } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
+                            // 碎片上限改为 64KB，超时极限压缩至 3ms
+                            if (bSz >= 65536) flush(); else if (!bTmr) bTmr = setTimeout(flush, 3); 
+                        } else { 
+                            flush(); // 有大流量到来，先清空积压
+                            if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); 
+                        }
                     } else { // adaptive
                         if (v.length < 8192) { 
                             batch.push(v); bSz += v.length;
-                            if (bSz >= 131072) flush(); else if (!bTmr) bTmr = setTimeout(flush, 12);
-                        } else { flush(); if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); }
+                            if (bSz >= 32768) flush(); else if (!bTmr) bTmr = setTimeout(flush, 4);
+                        } else { 
+                            flush(); 
+                            if(isWS && ws.readyState===1) ws.send(v); else if(!isWS) cW.write(v).catch(()=>{}); 
+                        }
                     }
                 } 
                 if (done) { 
@@ -271,26 +281,20 @@ const handleProxyEngine = (cR, ws, cWS, cW, isWS, pip, s5, es, gp) => {
     // ================= 智能主动声呐探测 (Smart Active Probe) =================
     const startTmrs = () => {
         tmrs.ka = setInterval(async () => { 
-            // 如果连接未建立、正在重连，或者距离上次有真实数据流动不到 10 秒，则跳过探测
             if (conn || !w || isReconnecting || Date.now() - lastAct < 10000) return;
 
             if (isProbing) return;
             isProbing = true;
 
             try {
-                // 主动发送 0 字节探针，并设定 3 秒的硬性超时（Race机制）
                 const probePromise = w.write(new Uint8Array(0));
                 const timeoutPromise = new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('Probe Timeout')), 3000)
                 );
 
                 await Promise.race([probePromise, timeoutPromise]);
-                
-                // 探测成功：连接依然健康，更新活跃时间避免 CF Worker 强杀
                 lastAct = Date.now(); 
-
             } catch (err) {
-                // 探测失败（Timeout 或 Error）：捕获到静默断流，立即执行后台无感重连
                 isProbing = false;
                 reconn(); 
             } finally {
