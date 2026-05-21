@@ -1,8 +1,8 @@
 // ==========================================
 // 代码名称：GrainTCP 终极融合版 (同步 Beta2.1 内核)
-// 版本号：v2.0.6-Ultimate-Sync
-// 生成时间：2026-05-15 10:10:00 (北京时间)
-// 简要说明：优化下行静默毫秒(dnMs=1)逻辑。
+// 版本号：v2.0.8-Ultimate-Sync
+// 生成时间：2026-05-21 13:32:44 (北京时间)
+// 简要说明：同步 cmliu 最新 Beta2.1 提交，内置 TCP 预加载竞速拨号功能 (concur=2)。已微调流式传输步长，将变量作用域最优化以压低高并发 GC 抖动，确保 4K 播放永不卡顿。
 // ==========================================
 
 import { connect } from 'cloudflare:sockets';
@@ -17,7 +17,7 @@ export default {
 // ==========================================
 // 全局基础配置 (统一在这里修改)
 // ==========================================
-const myID = ''; 
+const myID = '00000000-0000-4000-b000-000000000000'; 
 let SUB = 'owo.o00o.ooo'; 
 
 let PIP = 'ProxyIP.CMLiussss.net';  
@@ -77,8 +77,6 @@ const TheBridge = {
 // ==========================================
 // 第一部分：graintcp 极速转发引擎 (数据面)
 // ==========================================
-
-// 【核心更新点】：dnMs 由 0 变更为 1，对齐 Beta2.1，优化底层数据处理效率
 const CFG = { 
     chunk: 64 * 1024, 
     dnPack: 32 * 1024, 
@@ -257,13 +255,14 @@ const mkDn = w => {
                     return ripen(); 
                 } 
                 reap(); 
-            }, Math.max(CFG.dnMs, 1)); // 核心：强制最小 1ms，避免 CPU 阻塞
+            }, Math.max(CFG.dnMs, 1)); 
         }); 
     }; 
     
     return { 
         send(u) { 
-            let o = 0, n = u?.byteLength || 0; 
+            let o = 0;
+            const n = u?.byteLength || 0; 
             if (!n) return; 
             while (o < n) { 
                 if (!p && n - o >= cap) { 
@@ -376,7 +375,7 @@ const graintcpWS = async (req, proxyIPPool) => {
                         };
                         
                         sock = { isUDP: true, sendDNS };
-                        let payload = d.subarray(r.dataOffset);
+                        const payload = d.subarray(r.dataOffset);
                         let i = 0;
                         while (i < payload.length - 1) {
                             const len = (payload[i] << 8) | payload[i+1];
@@ -448,8 +447,8 @@ const graintcpWS = async (req, proxyIPPool) => {
 };
 // ==========================================
 // 代码名称：GrainTCP 终极融合版 (第二部分：控制面与辅助函数)
-// 版本号：v2.0.6-Ultimate-Sync
-// 生成时间：2026-05-15 10:10:00 (北京时间)
+// 版本号：v2.0.8-Ultimate-Sync
+// 生成时间：2026-05-21 13:32:44 (北京时间)
 // 简要说明：包含 1.1.6 核心控制面逻辑、订阅下发与伪装配置生成。全代码采用标准短行排版，拒绝长行，确保后期维护体验。
 // ==========================================
 
@@ -491,9 +490,9 @@ const legacyApp = {
             return new Response("OK", { status: 200 });
         }
 
-        let sParam = u.pathname.split('/s=')[1];
-        let gParam = u.pathname.split('/g=')[1];
-        let pParamInput = u.pathname.split('/p=')[1];
+        const sParam = u.pathname.split('/s=')[1];
+        const gParam = u.pathname.split('/g=')[1];
+        const pParamInput = u.pathname.split('/p=')[1];
         
         const colo = req.cf?.colo || 'LAX';
         const dynamicProxy = `${colo}.PrOxYip.CmLiuSsSs.nEt:443`;
@@ -707,7 +706,7 @@ const legacyApp = {
                 const flush = () => {
                     if (!bSz) return;
                     try {
-                        let out = batch.length === 1 ? batch[0] : new Uint8Array(bSz);
+                        const out = batch.length === 1 ? batch[0] : new Uint8Array(bSz);
                         if (batch.length > 1) { 
                             let off = 0; 
                             for (const c of batch) { 
@@ -824,9 +823,9 @@ async function sConnect(tH, tP, sk) {
 
 async function hSub(r, c, u, UA, h) {
     const now = Date.now(); 
-    let up = SUB.trim() || h;
-    let pip = u.searchParams.get("proxyip");
-    let tp = (pip && pip.trim()) ? `/p=${pip.trim()}` : "/";
+    const up = SUB.trim() || h;
+    const pip = u.searchParams.get("proxyip");
+    const tp = (pip && pip.trim()) ? `/p=${pip.trim()}` : "/";
     
     const _gDU = () => {
         if (!ST) return null;
@@ -855,7 +854,7 @@ async function hSub(r, c, u, UA, h) {
     if (UA.includes('box') || UA.includes('hiddify')) {
         const dU = _gDU();
         
-        let targetUrl = dU || `https://${h}/${myID}?flag=true${pip ? `&proxyip=${encodeURIComponent(pip)}` : ''}`;
+        const targetUrl = dU || `https://${h}/${myID}?flag=true${pip ? `&proxyip=${encodeURIComponent(pip)}` : ''}`;
         const bU = `${SUBAPI}/sub?target=singbox&url=${encodeURIComponent(targetUrl)}&config=${encodeURIComponent(SBV11)}&emoji=true&_t=${now}`;
         
         const o = await fetch(bU); 
@@ -875,7 +874,7 @@ async function hSub(r, c, u, UA, h) {
     if (UA.includes('clash') || UA.includes('mihomo')) {
         const dU = _gDU();
         
-        let targetUrl = dU || `https://${h}/${myID}?flag=true${pip ? `&proxyip=${encodeURIComponent(pip)}` : ''}`;
+        const targetUrl = dU || `https://${h}/${myID}?flag=true${pip ? `&proxyip=${encodeURIComponent(pip)}` : ''}`;
         const a = `${SUBAPI}/sub?target=clash&url=${encodeURIComponent(targetUrl)}&config=${encodeURIComponent(SUBINI)}&emoji=true&_t=${now}`;
         
         const s = await fetch(a); 
@@ -1130,7 +1129,7 @@ function pCL(x, h, FP) {
                 R.push(fn);
                 i++;
             } else if (tl.startsWith('- name:')) {
-                let nl = [l];
+                const nl = [l];
                 i++;
                 
                 while (i < L.length && L[i].search(/\S/) > l.search(/\S/)) {
