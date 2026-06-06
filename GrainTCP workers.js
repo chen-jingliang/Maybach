@@ -1,39 +1,48 @@
 // ==========================================
 // 代码名称：GrainTCP 终极融合版 (同步 Beta2.1 内核)
-// 版本号：v2.0.8-Ultimate-Sync
-// 生成时间：2026-05-21 13:32:44 (北京时间)
-// 简要说明：同步 cmliu 最新 Beta2.1 提交，内置 TCP 预加载竞速拨号功能 (concur=2)。已微调流式传输步长，将变量作用域最优化以压低高并发 GC 抖动，确保 4K 播放永不卡顿。
+// 版本号：v2.0.10-Ultimate-Sync
 // ==========================================
 
 import { connect } from 'cloudflare:sockets';
 
-// 【防报错入口】将导出入口放在最前面，强制 CF 瞬间识别为 ES Module 环境
 export default {
     async fetch(req, env) {
         return await TheBridge.fetch(req, env);
     }
 };
 
-// ==========================================
-// 全局基础配置 (统一在这里修改)
-// ==========================================
-const myID = '00000000-0000-4000-b000-000000000000'; 
+const myID = ''; 
 let SUB = 'owo.o00o.ooo'; 
 
 let PIP = 'ProxyIP.CMLiussss.net';  
 let SUBAPI = 'https://subapi.cmliussss.net';  
 let SUBINI = 'https://raw.githubusercontent.com/cmliu/ACL4SSR/main/Clash/config/ACL4SSR_Online_Full_MultiMode.ini'; 
-const SBV12 = 'https://raw.githubusercontent.com/sinspired/sub-store-template/main/1.12.x/sing-box.json'; 
-const SBV11 = 'https://raw.githubusercontent.com/sinspired/sub-store-template/main/1.11.x/sing-box.json'; 
+const SBV12 = 'https://raw.githubusercontent.com/sinsponsored/sub-store-template/main/1.12.x/sing-box.json'; 
+const SBV11 = 'https://raw.githubusercontent.com/sinsponsored/sub-store-template/main/1.11.x/sing-box.json'; 
 const ST = "";  
 const ECH = true;  
 const ECH_DNS = 'https://dns.alidns.com/dns-query';  
 const ECH_SNI = 'cloudflare-ech.com';  
 const FP = ECH ? 'chrome' : 'randomized';
 
-// ==========================================
-// 核心网关分流器 (The Bridge)
-// ==========================================
+let globalProxyCache = null;
+
+function parseProxyStr(str, defaultPort = 443) {
+    if (!str) return null;
+    const parts = str.split(':');
+    return { 
+        hostname: parts[0].trim(), 
+        port: parts[1] ? parseInt(parts[1].trim(), 10) : defaultPort 
+    };
+}
+
+function getGlobalProxyCache() {
+    if (!globalProxyCache) {
+        globalProxyCache = PIP ? PIP.split(',').map(ip => parseProxyStr(ip)).filter(Boolean) : [];
+    }
+    return globalProxyCache;
+}
+
 const TheBridge = {
     async fetch(req, env) {
         const u = new URL(req.url);
@@ -59,11 +68,14 @@ const TheBridge = {
             const colo = req.cf?.colo || 'LAX';
             const dynamicProxy = `${colo}.PrOxYip.CmLiuSsSs.nEt:443`;
 
+            // 利用结构化缓存重构提取池，斩断运算开销
             if (pParamInput) { 
-                proxyIPPool.push(decodeURIComponent(pParamInput)); 
+                const parsed = parseProxyStr(decodeURIComponent(pParamInput));
+                if (parsed) proxyIPPool.push(parsed); 
             } else { 
-                if (PIP) proxyIPPool.push(PIP); 
-                proxyIPPool.push(dynamicProxy); 
+                proxyIPPool.push(...getGlobalProxyCache()); 
+                const parsedDynamic = parseProxyStr(dynamicProxy);
+                if (parsedDynamic) proxyIPPool.push(parsedDynamic); 
             }
 
             return await graintcpWS(req, proxyIPPool);
@@ -74,9 +86,6 @@ const TheBridge = {
     }
 };
 
-// ==========================================
-// 第一部分：graintcp 极速转发引擎 (数据面)
-// ==========================================
 const CFG = { 
     chunk: 64 * 1024, 
     dnPack: 32 * 1024, 
@@ -116,11 +125,12 @@ const addr = (t, b) => {
     return `[${Array.from({ length: 8 }, (_, i) => ((b[i * 2] << 8) | b[i * 2 + 1]).toString(16)).join(':')}]`;
 };
 
-const raceSprout = async (f, targetHost, targetPort, proxyIPPool) => { 
+// 对齐 Beta2.1 缓存对接，直接消费结构化对象 pObj
+const raceSprout = async (f, targetHost, targetPort, proxyIPPool, maxConcur = CFG.concur) => { 
     if (!f?.connect) throw new Error('connect unavailable'); 
     
     let ts = [];
-    for (let i = 0; i < CFG.concur; i++) {
+    for (let i = 0; i < maxConcur; i++) {
         const s = f.connect({ hostname: targetHost, port: targetPort });
         ts.push(s.opened.then(() => s));
     }
@@ -131,11 +141,9 @@ const raceSprout = async (f, targetHost, targetPort, proxyIPPool) => {
         return w;
     } catch (err) {
         if (proxyIPPool && proxyIPPool.length > 0) {
-            const fallbackTs = proxyIPPool.map(proxyStr => {
-                const [ph, pp] = proxyStr.split(':');
-                const s = f.connect({ hostname: ph, port: +(pp || targetPort || 443) });
-                return s.opened.then(() => s);
-            });
+            const fallbackTs = proxyIPPool.map(pObj => {
+                return f.connect({ hostname: pObj.hostname, port: pObj.port || targetPort || 443 });
+            }).map(s => s.opened.then(() => s));
             try {
                 const fw = await Promise.any(fallbackTs);
                 fallbackTs.forEach(t => t.then(s => s !== fw && s.close(), () => {}));
@@ -392,7 +400,13 @@ const graintcpWS = async (req, proxyIPPool) => {
                     const port = r.port; 
                     const payload = d.subarray(r.dataOffset); 
                     
-                    sock = await raceSprout({ connect }, host, port, proxyIPPool); 
+                    let maxConcur = CFG.concur;
+                    const asOrg = req.cf?.asOrganization?.toLowerCase() || '';
+                    if (asOrg.includes('china mobile') || asOrg.includes('cmcc') || req.cf?.asn === 9808) {
+                        maxConcur = 1;
+                    }
+                    
+                    sock = await raceSprout({ connect }, host, port, proxyIPPool, maxConcur); 
                     if (!sock) throw wither(); 
                     
                     curW = sock.writable.getWriter(); 
@@ -445,12 +459,6 @@ const graintcpWS = async (req, proxyIPPool) => {
         headers: edStr ? { 'Sec-WebSocket-Protocol': edStr } : {} 
     }); 
 };
-// ==========================================
-// 代码名称：GrainTCP 终极融合版 (第二部分：控制面与辅助函数)
-// 版本号：v2.0.8-Ultimate-Sync
-// 生成时间：2026-05-21 13:32:44 (北京时间)
-// 简要说明：包含 1.1.6 核心控制面逻辑、订阅下发与伪装配置生成。全代码采用标准短行排版，拒绝长行，确保后期维护体验。
-// ==========================================
 
 const te = new TextEncoder();
 const td = new TextDecoder();
@@ -509,10 +517,12 @@ const legacyApp = {
             skJson = getSKJson(gParam); 
         } else if (pParamInput) { 
             mode = 'p'; 
-            proxyIPPool.push(pParamInput); 
+            const parsed = parseProxyStr(pParamInput);
+            if (parsed) proxyIPPool.push(parsed); 
         } else { 
-            if (PIP) proxyIPPool.push(PIP); 
-            proxyIPPool.push(dynamicProxy); 
+            proxyIPPool.push(...getGlobalProxyCache()); 
+            const parsedDynamic = parseProxyStr(dynamicProxy);
+            if (parsedDynamic) proxyIPPool.push(parsedDynamic); 
         }
 
         let clientRead, clientWrite, response, ws;
@@ -662,10 +672,9 @@ const legacyApp = {
                         }
                         
                         if (!sock && proxyIPPool.length > 0) {
-                            for (const proxy of proxyIPPool) {
+                            for (const pObj of proxyIPPool) {
                                 try { 
-                                    const [ph, pp] = proxy.split(':'); 
-                                    sock = connect({ hostname: ph, port: +(pp || 443) }); 
+                                    sock = connect({ hostname: pObj.hostname, port: pObj.port }); 
                                     await sock.opened; 
                                     break; 
                                 } catch (e) { 
@@ -923,10 +932,6 @@ async function hSub(r, c, u, UA, h) {
     
     return new Response("Err", { status: 502 });
 }
-
-// ==========================================
-// 1.1.6 附属辅助函数
-// ==========================================
 
 async function _getECH(h) {
     try {
