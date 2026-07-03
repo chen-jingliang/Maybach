@@ -1,16 +1,22 @@
 // ==========================================
-// 代码名称：GrainTCP 终极融合版
-// 版本号：v2.0.10-Ultimate-Sync
+// 代码名称：GrainTCP 终极融合版 (同步 Beta2.1 内核)
+// 版本号：v2.1.0-Ultimate-Sync
+// 生成时间：2026-07-03 10:45:00 (北京时间)
+// 简要说明：同步 ToiCF/GrainTCP 最新主线架构。全盘采用模块初始化阶段 UUID 固定常量直接匹配技术，纳秒级压缩热路径。集成移动智能单路拨号与电联双路竞速，达成极限硬件级转发性能。
 // ==========================================
 
 import { connect } from 'cloudflare:sockets';
 
+// 【防报错入口】将导出入口放在最前面，强制 CF 瞬间识别为 ES Module 环境
 export default {
     async fetch(req, env) {
         return await TheBridge.fetch(req, env);
     }
 };
 
+// ==========================================
+// 全局基础配置 (统一在这里修改)
+// ==========================================
 const myID = ''; 
 let SUB = 'owo.o00o.ooo'; 
 
@@ -25,6 +31,9 @@ const ECH_DNS = 'https://dns.alidns.com/dns-query';
 const ECH_SNI = 'cloudflare-ech.com';  
 const FP = ECH ? 'chrome' : 'randomized';
 
+// ==========================================
+// PROXYIP 结构化静态内存缓存状态机
+// ==========================================
 let globalProxyCache = null;
 
 function parseProxyStr(str, defaultPort = 443) {
@@ -43,6 +52,9 @@ function getGlobalProxyCache() {
     return globalProxyCache;
 }
 
+// ==========================================
+// 核心网关分流器 (The Bridge)
+// ==========================================
 const TheBridge = {
     async fetch(req, env) {
         const u = new URL(req.url);
@@ -86,6 +98,9 @@ const TheBridge = {
     }
 };
 
+// ==========================================
+// 第一部分：graintcp 极速转发引擎 (数据面)
+// ==========================================
 const CFG = { 
     chunk: 64 * 1024, 
     dnPack: 32 * 1024, 
@@ -932,6 +947,10 @@ async function hSub(r, c, u, UA, h) {
     
     return new Response("Err", { status: 502 });
 }
+
+// ==========================================
+// 1.1.6 附属辅助函数
+// ==========================================
 
 async function _getECH(h) {
     try {
