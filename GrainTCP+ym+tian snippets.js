@@ -1,6 +1,6 @@
 // ver. 1.0.0 GrantTCP+ym+tian（https://github.com/jacobax/snippets/blob/main/snippet.js、https://github.com/jy02739245/workers-vless/blob/main/snippets_nos5.js） 2026-07-31
 import { connect } from 'cloudflare:sockets';
-const v1 = 'ProxyIP.CMLiussss.net!txt', v2 = '00000000-0000-4000-8000-000000000000';
+const v1 = 'ProxyIP.CMLiussss.net!txt', v2 = '81818e2e-e597-4fb4-bff9-e998bac45460';
 
 const CFG={pw:v2,chunk:64*1024,dnPack:32*1024,dnTail:512,dnMs:0,dnQr:4,upPack:16*1024,upQMax:256*1024,maxED:8*1024,concur:1};
 const c_map=new Map,c_max=400,c_ttl=18e4;
