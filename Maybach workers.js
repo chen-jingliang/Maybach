@@ -1,4 +1,9 @@
-// Version: v1.3.1 | Time: 2026-08-12 09:56:17 (北京时间)
+// ==========================================
+// 代码名称：GrainTCP+CM+XHTTP 终极融合版
+// 版本号：v1.3.2
+// 生成时间：2026-08-12 10:20:48 (北京时间)
+// 简要说明：同步 ToiCF/GrainTCP 最新主线架构，深度融合 jacobax 核心，支持 xhttp 协议与多级路由穿透
+// ==========================================
 import { connect } from 'cloudflare:sockets';
 
 const te = new TextEncoder();
@@ -41,7 +46,7 @@ function genXhttpPadding(len) {
 
 // ================= jacobax 核心引擎与密码学模块 =================
 const v1 = PIP, v2 = myID; 
-const CFG={chunk:64*1024,dnPack:64*1024,dnTail:1024,dnMs:1,dnQr:0,upPack:32*1024,upQMax:1024*1024,upNMax:256,maxED:8*1024,hsMax:16*1024,connMs:2500}; // connMs 提升为 2500 保证弱网穿透
+const CFG={chunk:64*1024,dnPack:64*1024,dnTail:1024,dnMs:1,dnQr:0,upPack:32*1024,upQMax:1024*1024,upNMax:256,maxED:8*1024,hsMax:16*1024,connMs:2500}; 
 const c_map=new Map,c_run=new Map,c_max=400,c_ttl=18e4;
 let v3=null,v4=null,v_pk=null,v_pv=null,v_mk=null;
 const r_ip=/^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
@@ -246,6 +251,7 @@ export default {
             return new Response("OK", { status: 200 });
         }
 
+        // ================= GrainTCP 与三协议核心分发逻辑 =================
         let rw={socket:null,writer:null},dq=!1,closed=!1,busy=!1,pT=0;
         const ssEngine=new SS(), uq=mkQ(CFG.upPack,CFG.upQMax);
         
@@ -369,6 +375,8 @@ export default {
         return response;
     }
 };
+
+async function _getECH(h){try{const ps=h.split('.'),bs=[];for(const l of ps){const e=new TextEncoder().encode(l);bs.push(e.length,...e);}bs.push(0);const dn=new Uint8Array(bs);const pk=new Uint8Array(12+dn.length+4);const dv=new DataView(pk.buffer);dv.setUint16(0,Math.random()*65535|0);dv.setUint16(2,256);dv.setUint16(4,1);pk.set(dn,12);dv.setUint16(12+dn.length,65);dv.setUint16(14+dn.length,1);const rp=await fetch(ECH_DNS,{method:'POST',headers:{'Content-Type':'application/'+'dns'+'-message',Accept:'application/'+'dns'+'-message'},body:pk});if(!rp.ok)return null;const bf=new Uint8Array(await rp.arrayBuffer());const rv=new DataView(bf.buffer);const qc=rv.getUint16(4),ac=rv.getUint16(6);const sn=p=>{let c=p;while(c<bf.length){const n=bf[c];if(!n)return c+1;if((n&0xC0)===0xC0)return c+2;c+=n+1;}return c+1;};let o=12;for(let i=0;i<qc;i++)o=sn(o)+4;for(let i=0;i<ac&&o<bf.length;i++){o=sn(o);const tp=rv.getUint16(o);o+=2;o+=6;const rl=rv.getUint16(o);o+=2;if(tp===65){const rd=bf.slice(o,o+rl);let p=2;while(p<rd.length){const n=rd[p];if(!n){p++;break;}p+=n+1;}while(p+4<=rd.length){const k=(rd[p]<<8)|rd[p+1],ln=(rd[p+2]<<8)|rd[p+3];p+=4;if(k===5)return'-----BEGIN ECH CONFIGS-----\n'+btoa(String.fromCharCode(...rd.slice(p,p+ln)))+'\n-----END ECH CONFIGS-----';p+=ln;}}o+=rl;}return null;}catch{return null;}}
 
 const fixVless = (link, h, tp, FP, ECH, ECH_SNI, ECH_DNS) => {
     if (!link.trim().toLowerCase().startsWith('vless://')) return link;
@@ -516,7 +524,6 @@ async function hSub(r,c,u,UA,h){
     const now=Date.now();
     let up=SUB.trim()||h;
     
-    // 注入要求的默认 ProxyIP 166.88.95.214:51294 及其伪装路径
     let pip = u.searchParams.get("proxyip") || "166.88.95.214:51294"; 
     let tp = (pip && pip.trim()) ? `/proxyip=${pip.trim()}` : "/";
     
