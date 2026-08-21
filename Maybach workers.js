@@ -1,15 +1,15 @@
 // ==========================================
-// 代码名称：GrainTCP+CM+XHTTP 终极融合版
-// 版本号：v1.3.3
-// 生成时间：2026-08-13 17:46:27 (北京时间)
-// 简要说明：同步 ToiCF/GrainTCP 最新主线架构，深度融合 jacobax 最新优化核心，完成上/下行参数对齐与 XHTTP 缓存流优化
+// 代码名称：GrainTCP+CM+XHTTP+jaclbax
+// 版本号：v1.3.4
+// 生成时间：2026-08-21 15:50:12 (北京时间)
+// 简要说明：同步 ToiCF/GrainTCP 最新主线架构，深度融合 jacobax 核心，重构 XHTTP extra 复合结构与默认路径
 // ==========================================
 import { connect } from 'cloudflare:sockets';
 
 const te = new TextEncoder();
 const td = new TextDecoder();
 
-const myID = '81818e2e-e597-4fb4-bff9-e998bac45460';
+const myID = '00000000-0000-4000-b000-000000000000';
 
 let PIP = 'ProxyIP.CMLiussss.net';  
 let SUB = 'sub.xdu.qzz.io';  
@@ -28,11 +28,18 @@ let TYPE = 'xhttp';
 const padHeader = myID.slice(1, 7);
 const padKey = '_' + myID.slice(25, 31);
 const xhttpExtra = JSON.stringify({
-    "xPaddingObfsMode": true,
-    "xPaddingMethod": "tokenish",
-    "xPaddingPlacement": "queryInHeader",
-    "xPaddingHeader": padHeader,
-    "xPaddingKey": padKey
+    "extra": {
+        "noGRPCHeader": true,
+        "headers": {
+            "Content-Type": "application/octet-stream"
+        },
+        "xPaddingBytes": "100-1000",
+        "xPaddingObfsMode": true,
+        "xPaddingMethod": "tokenish",
+        "xPaddingPlacement": "queryInHeader",
+        "xPaddingHeader": padHeader,
+        "xPaddingKey": padKey
+    }
 });
 
 const xhttpBase62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -46,7 +53,6 @@ function genXhttpPadding(len) {
 
 // ================= jacobax 最新优化核心引擎与密码学模块 =================
 const v1 = PIP, v2 = myID; 
-// [参数移植] 对齐 jacobax 最新参数提升：下行 128KB、上行 64KB、队列 2MB、超时 2000ms，引入 xhInit/xhNext
 const CFG = { chunk: 65536, dnPack: 131072, dnTail: 2048, dnMs: 1, dnQr: 0, upPack: 65536, upQMax: 2097152, upNMax: 256, maxED: 8192, hsMax: 16384, connMs: 2000, xhInit: 8192, xhNext: 4096 }; 
 const c_map = new Map, c_run = new Map, c_max = 400, c_ttl = 18e4;
 let v3 = null, v4 = null, v_pk = null, v_pv = null, v_mk = null;
@@ -88,14 +94,13 @@ const f33 = async (m, k) => { const c = new Uint8Array(m), d = new DataView(c.bu
 const f34 = async (rd, bf) => { let b = bf ?? v_b0; const pl = async () => { const { done: dn, value: vl } = await rd.read(); if (dn) throw 0; b = cat(b, new Uint8Array(vl)) }; try { for (; b.length < 20;) await pl(); const n = 20 + f3(b, 2); for (; b.length < n;) await pl(); return [f32(b.subarray(0, n)), b.length > n ? b.subarray(n) : null] } catch { return [null, null] } };
 const f35 = async s => new Uint8Array(await crypto.subtle.digest("MD5", f1(s)));
 const f36 = async (w, r, tp, pc, pl) => { const tv = new Uint8Array([tp, 0, 0, 0]); await w.write(f30(3, f5(12), [f29(25, tv)])); let [mg, ex] = await f34(r); if (!mg) return null; let ky = null, aa = []; const sn = m => ky ? f33(m, ky) : Promise.resolve(m); if (275 === mg.type && pc.username && 401 === (mg.attrs[9]?.length >= 4 ? (7 & mg.attrs[9][2]) * 100 + mg.attrs[9][3] : 0)) { const rm = dec.decode(mg.attrs[20] ?? v_b0), nc = mg.attrs[21] ?? v_b0; ky = await f35(`${pc.username}:${rm}:${pc.password}`), aa = [f29(6, f1(pc.username)), f29(20, f1(rm)), f29(21, nc)]; const aq = await f33(f30(3, f5(12), [f29(25, tv), ...aa]), ky), xt = pl ? await Promise.all(pl(aa, sn)) : []; if (await w.write(xt.length ? cat(aq, ...xt) : aq), [mg, ex] = await f34(r, ex), !mg) return null } else if (pl && 259 === mg.type) { const xt = await Promise.all(pl(aa, sn)); xt.length && await w.write(cat(...xt)) } return 259 === mg.type ? { ky: ky, aa: aa, ex: ex, sn: sn } : null };
-const f37 = async (pc, th, tp) => { let cl = null, dt = null, ts_cl = null, ts_dt = null; const cs = () => { ts_cl?.close(); ts_dt?.close(); f12(cl); f12(dt) }; try { if (pc.isc) { cl = connect({ hostname: pc.host, port: pc.port }); await cl.opened; ts_cl = new TlsClient(cl, { serverName: pc.host }); await ts_cl.handshake() } else { const opt = "turns" === pc.type ? { secureTransport: "on" } : {}; cl = connect({ hostname: pc.host, port: pc.port }, opt); await cl.opened } const cw = pc.isc ? { write: k => ts_cl.write(k) } : cl.writable.getWriter(); const cr = pc.isc ? { read: () => ts_cl.read().then(v => ({ done: !v, value: v })) } : cl.readable.getReader(); const pr = f29(18, f31(th, tp)); const ah = await f36(cw, cr, 6, pc, (aa, sn) => [sn(f30(8, f5(12), [pr, ...aa])), sn(f30(10, f5(12), [pr, ...aa]))]); if (!ah) throw 0; const { aa, sn } = ah; let ex = ah.ex, r; if ([r, ex] = await f34(cr, ex), 264 !== r?.type) throw 0; if ([r, ex] = await f34(cr, ex), 266 !== r?.type || !r.attrs[42]) throw 0; if (pc.isc) { dt = connect({ hostname: pc.host, port: pc.port }); await dt.opened; ts_dt = new TlsClient(dt, { serverName: pc.host }); await ts_dt.handshake() } else { const opt = "turns" === pc.type ? { secureTransport: "on" } : {}; dt = connect({ hostname: pc.host, port: pc.port }, opt); await dt.opened } const dw = pc.isc ? { write: k => ts_dt.write(k) } : dt.writable.getWriter(); const dr = pc.isc ? { read: () => ts_dt.read().then(v => ({ done: !v, value: v })) } : dt.readable.getReader(); await dw.write(await sn(f30(11, f5(12), [f29(42, r.attrs[42]), ...aa]))); let xt; if ([r, xt] = await f34(dr), 267 !== r?.type) throw 0; if (!pc.isc) { cr.releaseLock(); cw.releaseLock() } if (pc.isc) { const rdStream = new ReadableStream({ start: c => { xt?.length && c.enqueue(xt) }, async pull(c) { try { const d = await ts_dt.read(); d ? c.enqueue(d) : c.close() } catch (e) { c.error(e) } }, cancel() { ts_dt.close() } }); const wrStream = new WritableStream({ async write(k) { await ts_dt.write(k) }, close() { ts_dt.close() }, abort() { ts_dt.close() } }); return { readable: rdStream, writable: wrStream, close: cs } } if (xt?.length) { dw.releaseLock(); return { readable: new ReadableStream({ start: c => c.enqueue(xt), pull: c => dr.read().then(({ done: dn, value: vl }) => dn ? c.close() : c.enqueue(new Uint8Array(vl))), cancel: () => dr.cancel() }), writable: dt.writable, close: cs } } else { dr.releaseLock(); dw.releaseLock(); return { readable: dt.readable, writable: dt.writable, close: cs } } } catch { throw cs(), new Error("E18") } };
+const f37 = async (pc, th, tp) => { let cl = null, dt = null, ts_cl = null, ts_dt = null; const cs = () => { ts_cl?.close(); ts_dt?.close(); f12(cl); f12(dt) }; try { if (pc.isc) { cl = connect({ hostname: pc.host, port: pc.port }); await cl.opened; ts_cl = new TlsClient(cl, { serverName: pc.host }); await ts_cl.handshake() } else { const opt = "turns" === pc.type ? { secureTransport: "on" } : {}; cl = connect({ hostname: pc.host, port: pc.port }, opt); await cl.opened} const cw = pc.isc ? { write: k => ts_cl.write(k) } : cl.writable.getWriter(); const cr = pc.isc ? { read: () => ts_cl.read().then(v => ({ done: !v, value: v })) } : cl.readable.getReader(); const pr = f29(18, f31(th, tp)); const ah = await f36(cw, cr, 6, pc, (aa, sn) => [sn(f30(8, f5(12), [pr, ...aa])), sn(f30(10, f5(12), [pr, ...aa]))]); if (!ah) throw 0; const { aa, sn } = ah; let ex = ah.ex, r; if ([r, ex] = await f34(cr, ex), 264 !== r?.type) throw 0; if ([r, ex] = await f34(cr, ex), 266 !== r?.type || !r.attrs[42]) throw 0; if (pc.isc) { dt = connect({ hostname: pc.host, port: pc.port }); await dt.opened; ts_dt = new TlsClient(dt, { serverName: pc.host }); await ts_dt.handshake() } else { const opt = "turns" === pc.type ? { secureTransport: "on" } : {}; dt = connect({ hostname: pc.host, port: pc.port }, opt); await dt.opened } const dw = pc.isc ? { write: k => ts_dt.write(k) } : dt.writable.getWriter(); const dr = pc.isc ? { read: () => ts_dt.read().then(v => ({ done: !v, value: v })) } : dt.readable.getReader(); await dw.write(await sn(f30(11, f5(12), [f29(42, r.attrs[42]), ...aa]))); let xt; if ([r, xt] = await f34(dr), 267 !== r?.type) throw 0; if (!pc.isc) { cr.releaseLock(); cw.releaseLock() } if (pc.isc) { const rdStream = new ReadableStream({ start: c => { xt?.length && c.enqueue(xt) }, async pull(c) { try { const d = await ts_dt.read(); d ? c.enqueue(d) : c.close() } catch (e) { c.error(e) } }, cancel() { ts_dt.close() } }); const wrStream = new WritableStream({ async write(k) { await ts_dt.write(k) }, close() { ts_dt.close() }, abort() { ts_dt.close() } }); return { readable: rdStream, writable: wrStream, close: cs } } if (xt?.length) { dw.releaseLock(); return { readable: new ReadableStream({ start: c => c.enqueue(xt), pull: c => dr.read().then(({ done: dn, value: vl }) => dn ? c.close() : c.enqueue(new Uint8Array(vl))), cancel: () => dr.cancel() }), writable: dt.writable, close: cs } } else { dr.releaseLock(); dw.releaseLock(); return { readable: dt.readable, writable: dt.writable, close: cs } } } catch { throw cs(), new Error("E18") } };
 async function f38(pc, th, tp) { let ti = th; if (!r_ip.test(ti)) { const ar = await f14(th, "A"), il = ar.filter(x => 1 === x.type).map(x => x.data); if (!(il.length > 0)) throw 0; ti = il[0] } const sk = await f37(pc, ti, tp); if (!sk) throw 0; return sk }
 const f_adr = (t, b) => 1 === t ? `${b[0]}.${b[1]}.${b[2]}.${b[3]}` : 3 === t ? dec.decode(b) : `[${Array.from({ length: 8 }, (_, i) => (b[2 * i] << 8 | b[2 * i + 1]).toString(16)).join(":")}]`;
 const f_padr = (b, o, t) => { const l = 3 === t ? b[o++] : 1 === t ? 4 : 4 === t ? 16 : null; return null === l ? null : o + l > b.length ? null : { b: b.subarray(o, o + l), o: o + l } };
 const f_vmore = c => { if (c.byteLength < 24 || !matchID(c)) return null; let o = 19 + c[17]; if (o + 3 > c.byteLength) return null; let t = c[o + 2]; const p = c[o] << 8 | c[o + 1]; 1 !== t && (t += 1); const a = f_padr(c, o + 3, t); return a ? { t: t, b: a.b, p: p, u: 2 === c[18 + c[17]], v: c[0], o: a.o } : null };
 const f_trajon = c => { if (c.byteLength < 60) return null; for (let i = 0; i < 56; i++) if (c[i] !== authBuf[i]) return null; if (c[56] !== 13 || c[57] !== 10 || c[58] !== 1) return null; const t = c[59]; let o = 60, l = 1 === t ? 4 : 3 === t ? c[o++] : 4 === t ? 16 : null; if (null === l) return null; const n = o + l; if (n + 4 > c.byteLength || c[n + 2] !== 13 || c[n + 3] !== 10) return null; return { t: t, b: c.subarray(o, n), p: c[n] << 8 | c[n + 1], o: n + 4 } };
 const f43 = d => { if (d.length < 1) return null; const t = d[0]; let h, p, o; if (1 === t && d.length >= 7) { h = `${d[1]}.${d[2]}.${d[3]}.${d[4]}`; p = f3(d, 5); o = 7 } else if (3 === t && d.length >= 4 + d[1]) { h = dec.decode(d.subarray(2, 2 + d[1])); p = f3(d, 2 + d[1]); o = 4 + d[1] } else if (4 === t && d.length >= 19) { h = `[${Array.from({ length: 8 }, (_, i) => (d[1 + 2 * i] << 8 | d[2 + 2 * i]).toString(16)).join(":")}]`; p = f3(d, 17); o = 19 } else return null; return { h: h, p: p, o: o } };
-// [参数移植] 对齐 jacobax 最新超时设定 (CFG.connMs = 2000ms)
 const f_cd = (h, p, m = CFG.connMs) => new Promise((ok, no) => { h = String(h).trim(), h[0] == "[" && h[h.length - 1] == "]" && (h = h.slice(1, -1)); const s = connect({ hostname: h, port: p }); let e = 0; const t = setTimeout(() => { if (e) return; e = 1; try { s.close() } catch { } no(0) }, m); s.opened.then(() => { if (e) { try { s.close() } catch { } return } e = 1; clearTimeout(t); ok(s) }, x => { if (e) return; e = 1; clearTimeout(t); try { s.close() } catch { } no(x) }) });
 const f_p16 = (d, o, v) => { d[o] = v >> 8 & 255; d[o + 1] = v & 255 };
 const f_evp = async (pw, kl) => { let k = v_b0, pv = v_b0; const p = enc.encode(pw); while (k.length < kl) { const d = new Uint8Array(pv.length + p.length); d.set(pv), d.set(p, pv.length), pv = new Uint8Array(await crypto.subtle.digest("MD5", d)); const nk = new Uint8Array(k.length + pv.length); nk.set(k), nk.set(pv, k.length), k = nk } return k.slice(0, kl) };
@@ -104,9 +109,7 @@ const f_gmk = async () => v_mk ??= await f_evp(v2, 16);
 class AEAD { constructor(key) { this.key = key; this.nonce = new Uint8Array(12); this.ck = null } async init() { this.ck = await crypto.subtle.importKey("raw", this.key, { name: "AES-GCM" }, !1, ["encrypt", "decrypt"]) } inc() { for (let i = 0; i < this.nonce.length; i++) { this.nonce[i]++; if (this.nonce[i]) break } } async enc(d) { const c = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: this.nonce, tagLength: 128 }, this.ck, d)); return this.inc(), c } async dec(d) { try { const p = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: this.nonce, tagLength: 128 }, this.ck, d)); return this.inc(), p } catch { return null } } }
 class SS { constructor() { this.dec = null; this.enc = null; this.buf = v_b0; this.plen = -1 } async decData(data) { this.buf = this.buf.length ? cat(this.buf, data) : data; const out = []; if (!this.dec) { if (this.buf.length < 16) return { c: [] }; const salt = this.buf.slice(0, 16); this.buf = this.buf.slice(16), this.dec = new AEAD(await f_hkdf(await f_gmk(), salt, v_ssinf, 16)), await this.dec.init() } while (!0) { if (this.plen < 0) { if (this.buf.length < 18) break; const lp = await this.dec.dec(this.buf.slice(0, 18)); if (!lp) return { c: out, e: "len" }; this.plen = f3(lp, 0), this.buf = this.buf.slice(18) } const ps = this.plen + 16; if (this.buf.length < ps) break; const pp = await this.dec.dec(this.buf.slice(0, ps)); if (!pp) return { c: out, e: "pay" }; out.push(pp), this.buf = this.buf.slice(ps), this.plen = -1 } return { c: out } } async encData(data) { let pf = v_b0; if (!this.enc) { const salt = crypto.getRandomValues(new Uint8Array(16)); this.enc = new AEAD(await f_hkdf(await f_gmk(), salt, v_ssinf, 16)), await this.enc.init(), pf = salt } if (!data || 0 === data.length) return pf.length ? pf : v_b0; const mx = 16383, cks = []; for (let i = 0; i < data.length; i += mx) { const ck = data.subarray(i, Math.min(i + mx, data.length)), lb = new Uint8Array(2); f_p16(lb, 0, ck.length), cks.push(await this.enc.enc(lb)), cks.push(await this.enc.enc(ck)) } return cat(pf, ...cks) } }
 const mkK = (cap, cpy = 0) => { let q = [], h = 0, b = 0, buf = null; const e = () => h >= q.length, trim = () => { h > 32 && h * 2 >= q.length && (q = q.slice(h), h = 0) }, clear = () => { q = [], h = 0, b = 0 }; const take = () => { if (e()) return null; const d = q[h]; return q[h++] = void 0, b -= d.byteLength, trim(), d }; const sow = d => { const n = d?.byteLength || 0; return !!n && (q.push(d), b += n, 1) }; const pack = d => { let z = 0; if (!d) { d = take(); d && (z = 1) } if (!d || e()) return [d, 0, z]; let n = d.byteLength, j = h; while (j < q.length) { const x = q[j], nn = n + x.byteLength; if (nn > cap) break; n = nn; j++ } if (j === h) return [d, 0, z]; const out = buf ||= new Uint8Array(cap); out.set(d); for (let o = d.byteLength; h < j;) { const x = q[h]; q[h++] = void 0; b -= x.byteLength; out.set(x, o); o += x.byteLength; z++ } trim(); return [cpy ? out.slice(0, n) : out.subarray(0, n), 1, z] }; return { e: e, get b() { return b }, clear: clear, take: take, sow: sow, pack: pack } };
-// [参数移植] 对齐 jacobax 最新队列构造 (upPack = 64KB, upQMax = 2MB)
 const mkQ = (cap = CFG.upPack, mx = CFG.upQMax, nx = CFG.upNMax) => { const k = mkK(cap); let n = 0; return { get empty() { return k.e() }, get b() { return k.b }, clear() { k.clear(); n = 0 }, sow: d => { const z = d?.byteLength || 0; if (!z || k.b + z > mx || n >= nx) return 0; n++; return k.sow(d) }, bundle: d => { const r = k.pack(d); n = Math.max(0, n - r[2]); return r } } };
-// [参数移植] 对齐 jacobax 最新下行构造 (dnPack = 128KB)
 const mkDn = (w_send, ss, isRaw) => { const cap = CFG.dnPack, tail = CFG.dnTail, low = Math.max(4096, 12 * tail), k = mkK(cap, 1); let tp = 0, gen = 0, qk = 0, qr = 0; let txQueue = [], txBusy = false; const flushQueue = async () => { if (txBusy) return; txBusy = true; try { while (txQueue.length > 0) { const u = txQueue.shift(); const encData = await ss.encData(u); w_send(encData) } } catch { } finally { txBusy = false } }; const pushTx = u => { if (isRaw) { w_send(u) } else { txQueue.push(u); flushQueue() } }; const reap = () => { tp && clearTimeout(tp), tp = 0, qr = 0; for (; ;) { const [u] = k.pack(); if (!u) break; pushTx(u) } }; const ripen = () => { if (k.e() || tp) return; if (k.b >= cap || cap - k.b < tail) return reap(); tp = setTimeout(() => { tp = 0; if (k.e()) return; if (k.b >= cap || cap - k.b < tail) return reap(); if (qr < CFG.dnQr && (gen !== qk || k.b < low)) return qr++, qk = gen, void ripen(); reap() }, CFG.dnMs) }; return { send(u) { let o = 0, n = u?.byteLength || 0; if (!n) return; while (o < n) { const m = Math.min(cap - k.b, n - o); if (!m) { reap(); continue } k.sow(o || m !== n ? u.subarray(o, o + m) : u), gen++, o += m, k.b >= cap || cap - k.b < tail ? reap() : ripen() } }, fastSend(u) { u?.byteLength && pushTx(u) }, reap: reap } };
 const mill = async (rd, w_send, ss, isRaw) => { let r, ib = !1; try { r = rd.getReader({ mode: "byob" }), ib = !0 } catch { r = rd.getReader() } const tx = mkDn(w_send, ss, isRaw); let buf = new ArrayBuffer(CFG.chunk); try { if (ib) for (; ;) { const { done, value: v } = await r.read(new Uint8Array(buf, 0, CFG.chunk)); if (done) break; v?.byteLength && (v.byteLength >= CFG.chunk >> 1 ? (tx.reap(), tx.fastSend(v), buf = new ArrayBuffer(CFG.chunk)) : (tx.send(v.slice()), buf = v.buffer)) } else for (; ;) { const { done, value: v } = await r.read(); if (done) break; v?.byteLength && (v.byteLength >= CFG.chunk >> 1 ? (tx.reap(), tx.fastSend(v)) : tx.send(v)) } tx.reap() } catch { } finally { try { tx.reap() } catch { } try { r.releaseLock() } catch { } } };
 
@@ -238,7 +241,6 @@ export default {
             w_send = (d) => { clientWrite.write(d).catch(() => { }); };
             closeClient = () => { try { clientWrite.close() } catch { } };
             
-            // [参数移植] 对齐 jacobax 最新响应头标，新增 no-transform 保护传输处理
             const respHeaders = new Headers({
                 'Content-Type': 'application/octet-stream',
                 'X-Accel-Buffering': 'no',
@@ -328,7 +330,6 @@ export default {
             }
         }
 
-        // 加入碎包引流缓冲机制，杜绝 XHTTP 环境下解析判定为假而断流的问题
         let initBuffer = new Uint8Array(0);
         const pM = data => {
             if (closed) return;
@@ -513,7 +514,18 @@ function pCL(x, h, FP, tp) {
                         }
                         if (TYPE === 'xhttp') {
                             if (!nodeText.includes('xhttp-opts:')) appendLines.push(ind + 'xhttp-opts:');
-                            appendLines.push(ind + '  extra:', ind + '    xPaddingObfsMode: true', ind + '    xPaddingMethod: tokenish', ind + '    xPaddingPlacement: queryInHeader', ind + `    xPaddingHeader: "${padHeader}"`, ind + `    xPaddingKey: "${padKey}"`);
+                            appendLines.push(
+                                ind + '  extra:',
+                                ind + '    noGRPCHeader: true',
+                                ind + '    headers:',
+                                ind + '      Content-Type: application/octet-stream',
+                                ind + '    xPaddingBytes: "100-1000"',
+                                ind + '    xPaddingObfsMode: true',
+                                ind + '    xPaddingMethod: tokenish',
+                                ind + '    xPaddingPlacement: queryInHeader',
+                                ind + `    xPaddingHeader: "${padHeader}"`,
+                                ind + `    xPaddingKey: "${padKey}"`
+                            );
                         }
                         nl.splice(ii + 1, 0, ...appendLines);
                     }
@@ -529,8 +541,8 @@ async function hSub(r, c, u, UA, h) {
     const now = Date.now();
     let up = SUB.trim() || h;
     
-    let pip = u.searchParams.get("proxyip") || "166.88.95.214:51294"; 
-    let tp = (pip && pip.trim()) ? `/proxyip=${pip.trim()}` : "/";
+    let pip = u.searchParams.get("proxyip");
+    let tp = (pip && pip.trim()) ? `/proxyip=${pip.trim()}` : "/proxyip=166.88.95.214:51294?ed=2560";
     
     const _gDU = () => {
         if (!ST) return null;
