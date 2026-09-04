@@ -1,12 +1,12 @@
 // 代码名称：GrainTCP+CM+XHTTP+jaclbax
-// 版本号：v1.3.9 (Fixed)
-// 生成时间：2026-09-04 10:45:00 (北京时间)
+// 版本号：v1.4.0 (Fixed)
+// 生成时间：2026-09-04 21:05:00 (北京时间)
 import { connect } from 'cloudflare:sockets';
 
 const te = new TextEncoder();
 const td = new TextDecoder();
 
-const myID = '';
+const myID = '00000000-0000-4000-b000-000000000000';
 
 let PIP = 'ProxyIP.CMLiussss.net';  
 let SUB = 'sub.xdu.qzz.io';  
@@ -402,14 +402,24 @@ function parsePathConfig(url) {
 async function handleXHTTP(req, proxyPool) {
     if (!req.body) return new Response(null, { status: 400 });
     const trans = typeof IdentityTransformStream === "function" 
-        ? new IdentityTransformStream() 
-        : new TransformStream();
+        ? new (/** @type {any} */ (IdentityTransformStream))({ highWaterMark: 1048576 }) 
+        : new TransformStream(void 0, { highWaterMark: 1048576 });
+
     const stReader = (() => {
-        try { return { reader: req.body.getReader({ mode: "byob" }), byob: !0 }; } catch { return { reader: req.body.getReader(), byob: !1 }; }
+        try { return { reader: req.body.getReader({ mode: "byob" }), byob: !0 }; } 
+        catch { return { reader: req.body.getReader(), byob: !1 }; }
     })();
+
     const rd = stReader.reader, wr = trans.writable.getWriter();
     let upstream = null, rdDone = !1, wrDone = !1, isAbort = !1, ctlUp = null, ctlDn = null;
-    const releaseRd = () => { if (!rdDone) { rdDone = !0; try { rd.releaseLock(); } catch { } } };
+
+    const releaseRd = () => { 
+        if (!rdDone) { 
+            rdDone = !0; 
+            try { rd.releaseLock(); } catch { } 
+        } 
+    };
+
     const abortSession = err => {
         if (!isAbort) {
             isAbort = !0;
@@ -425,6 +435,7 @@ async function handleXHTTP(req, proxyPool) {
             }
         }
     };
+
     (async () => {
         let sBuf = new Uint8Array(0), session = null;
         while (!session) {
@@ -437,7 +448,9 @@ async function handleXHTTP(req, proxyPool) {
             if (dn) throw 0;
             if (vl.byteLength) sBuf = sBuf.byteLength ? cat(sBuf, vl) : new Uint8Array(vl);
         }
+
         if (session.responsePrefix.byteLength) await wr.write(session.responsePrefix);
+
         if (session.udpDns) {
             if (53 !== session.port) throw 0;
             const dnsHandler = pt_dns(wr, abortSession);
@@ -455,21 +468,28 @@ async function handleXHTTP(req, proxyPool) {
             }
             return void (isAbort = !0);
         }
+
         upstream = await f26_pool(session.host, session.port, proxyPool);
         if (!upstream) throw 0;
-        if (session.payload.byteLength) {
-            const uWr = upstream.writable.getWriter();
-            try { await uWr.write(session.payload); } finally { uWr.releaseLock(); }
-        }
-        releaseRd();
+
         if (!wrDone) {
             wrDone = !0;
             try { wr.releaseLock(); } catch { }
         }
+
         ctlUp = new AbortController();
         ctlDn = new AbortController();
-        const pUp = req.body.pipeTo(upstream.writable, { signal: ctlUp.signal });
+
         const pDn = upstream.readable.pipeTo(trans.writable, { signal: ctlDn.signal });
+
+        if (session.payload.byteLength) {
+            const uWr = upstream.writable.getWriter();
+            try { await uWr.write(session.payload); } finally { uWr.releaseLock(); }
+        }
+
+        releaseRd();
+        const pUp = req.body.pipeTo(upstream.writable, { signal: ctlUp.signal });
+
         pUp.catch(e => { isAbort || abortSession(e); });
         pDn.then(() => {
             if (!isAbort) {
@@ -479,17 +499,21 @@ async function handleXHTTP(req, proxyPool) {
             }
         }, abortSession);
     })().catch(abortSession);
+
     const respHeaders = new Headers({
         'Content-Type': 'application/octet-stream',
         'grpc-status': '0',
         'X-Accel-Buffering': 'no',
-        'Cache-Control': 'no-store, no-transform'
+        'Cache-Control': 'no-store, no-transform, private',
+        'X-Content-Type-Options': 'nosniff'
     });
+
     try {
         const padUrl = new URL('https://x.invalid/');
         padUrl.searchParams.set(padKey, genXhttpPadding(100 + Math.floor(Math.random() * 901)));
         respHeaders.set(padHeader, padUrl.toString());
     } catch (e) { }
+
     return new Response(trans.readable, { status: 200, headers: respHeaders });
 }
 async function handleWS(req, proxyPool) {
