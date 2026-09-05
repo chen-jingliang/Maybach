@@ -48,7 +48,7 @@ function genXhttpPadding(len) {
 }
 
 const v1 = PIP, v2 = myID; 
-const CFG = { chunk: 131072, dnPack: 524288, dnTail: 2048, dnMs: 10, dnTiny: 2048, upPack: 65536, upQMax: 2097152, upNMax: 256, maxED: 8192, hsMax: 16384, connMs: 4000, xhInit: 8192, xhNext: 4096 }; 
+const CFG = { chunk: 131072, dnPack: 524288, dnTail: 2048, dnMs: 10, dnTiny: 2048, upPack: 65536, upQMax: 8388608, upNMax: 2048, maxED: 8192, hsMax: 16384, connMs: 4000, xhInit: 8192, xhNext: 4096 }; 
 const c_map = new Map, c_run = new Map, c_max = 400, c_ttl = 18e4;
 let v3 = null, v4 = null;
 const r_ip = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
