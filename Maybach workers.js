@@ -1,6 +1,6 @@
 // 代码名称：GrainTCP+CM+XHTTP+jaclbax
-// 版本号：v1.4.1
-// 生成时间：2026-09-04 21:40:00 (北京时间)
+// 版本号：v1.4.2 (Race & H3 Tuned)
+// 生成时间：2026-09-18 18:00:00 (北京时间)
 import { connect } from 'cloudflare:sockets';
 
 const te = new TextEncoder();
@@ -20,6 +20,9 @@ const ECH_DNS = 'https://dns.alidns.com/dns-query';
 const ECH_SNI = 'cloudflare-ech.com';  
 const FP = ECH ? 'chrome' : 'randomized';
 let TYPE = 'xhttp'; 
+
+// 并发竞速设置，建议为 2，网络越差可适当调大，但不建议超过 3
+const RACE = 2;
 
 const padHeader = myID ? myID.slice(1, 7) : 'header';
 const padKey = '_' + (myID ? myID.slice(25, 31) : 'padding');
@@ -48,7 +51,8 @@ function genXhttpPadding(len) {
 }
 
 const v1 = PIP, v2 = myID; 
-const CFG = { chunk: 131072, dnPack: 524288, dnTail: 2048, dnMs: 10, dnTiny: 2048, upPack: 65536, upQMax: 8388608, upNMax: 2048, maxED: 8192, hsMax: 16384, connMs: 4000, xhInit: 8192, xhNext: 4096 }; 
+// 融合决策：沿用 1.3.8 的核心流控，吸收 0918 版本的 xhInit 与 xhNext 大容量握手抓包配置
+const CFG = { chunk: 131072, dnPack: 524288, dnTail: 2048, dnMs: 10, dnTiny: 2048, upPack: 65536, upQMax: 2097152, upNMax: 256, maxED: 8192, hsMax: 16384, connMs: 4000, xhInit: 32768, xhNext: 8192 }; 
 const c_map = new Map, c_run = new Map, c_max = 400, c_ttl = 18e4;
 let v3 = null, v4 = null;
 const r_ip = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
@@ -82,7 +86,7 @@ function f13(s) { if (!s) return null; s = s.trim(); if (s.startsWith("turn://")
 async function f14(d, t) { const k = d + "_" + t, n = Date.now(), c = c_map.get(k); if (c) { if (n - c.time < c_ttl) return c.data; c_map.delete(k); } const old = c_run.get(k); if (old) return old; const j = (async () => { try { const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(d)}&type=${t}`, { headers: { Accept: "application/dns-json" } }); if (!r.ok) return []; const a = (await r.json()).Answer || []; if (a.length) { if (c_map.size >= c_max) c_map.delete(c_map.keys().next().value); c_map.set(k, { data: a, time: Date.now() }); } return a; } catch { return []; } })(); c_run.set(k, j); try { return await j; } finally { c_run.delete(k); } }
 function f15(s) { let a = s, p = 443; const m = s.match(/^(?:\[([^\]]+)\]|([^:]+))(?::(\d+))?$/); return m && (a = m[1] || m[2], p = m[3] ? parseInt(m[3], 10) : 443), [a, p]; }
 async function f16(s, d = "dash.cloudflare.com", u = "00000000-0000-4000-8000-000000000000") { const r = s.trim(), ck = r + "\0" + d + "\0" + u; if (v3 === ck && v4) return v4; const t = r.toLowerCase().endsWith("!txt"), tg = t ? r.slice(0, -4).trim() : r; let a = []; if (t) { const z = await f14(tg, "TXT"), x = z.filter(x => 16 === x.type).map(x => x.data); if (x.length) a = x.map(x => x.replace(/"/g, "")).join(",").replace(/[\r\n\s]+/g, ",").split(",").map(x => x.trim()).filter(Boolean).map(f15); } else { a = [f15(tg)]; } const rt = d.includes(".") ? d.split(".").slice(-2).join(".") : d; let sd = [...rt + u].reduce((a, c) => a + c.charCodeAt(0), 0); v4 = [...a.sort((a, b) => a[0].localeCompare(b[0]))].sort(() => (sd = 1103515245 * sd + 12345 & 2147483647, sd / 2147483647 - .5)).slice(0, 8); v3 = ck; return v4; }
-const f17 = (u, p) => { let b = v_b0, i = 1, sk, rd, wr, h; const fn1 = async n => { if (b.length >= n) { const r = b.subarray(0, n); return b = b.subarray(n), r; } const sv = b.length > 0 ? new Uint8Array(b) : null, nd = n - b.length, { value: v, done: d } = await rd.readAtLeast(nd, new Uint8Array(Math.max(16384, nd))); if (d) throw 0; let t; return sv ? (t = cat(sv, v), b = t.subarray(n), t.subarray(0, n)) : (b = v.subarray(n), v.subarray(0, n)); }; const fn2 = async () => { for (; ;) { const x = b.indexOf(10); if (x >= 0) { let l = dec.decode(b.subarray(0, x)); return b = b.subarray(x + 1), l.replace(/\r$/, ""); } const sv = b.length > 0 ? new Uint8Array(b) : null, { value: v, done: d } = await rd.readAtLeast(1, new Uint8Array(16384)); if (d) throw 0; b = sv ? cat(sv, v) : v; } }; const fn3 = async (m = 1e4) => { let t; const to = new Promise((_, r) => { t = setTimeout(() => r("T"), m); }); try { const hd = await Promise.race([fn1(4), to]); clearTimeout(t); const l = f3(hd, 2) & 4095; return { ctrl: 1 == (1 & hd[1]), body: l > 4 ? await fn1(l - 4) : v_b0 }; } catch (e) { throw clearTimeout(t), e; } }; const fn4 = f => { const n = 6 + f.length, q = new Uint8Array(n); return q.set([16, 0, n >> 8 & 15 | 128, 255 & n, 255, 3]), q.set(f, 6), q; }; const fn5 = (m, a = []) => { const l = a.reduce((s, x) => s + 4 + x.data.length, 0), q = new Uint8Array(8 + l), vw = new DataView(q.buffer); return q[0] = 16, q[1] = 1, vw.setUint16(2, 8 + l | 32768), vw.setUint16(4, m), vw.setUint16(6, a.length), a.reduce((o, x) => (q[o + 1] = x.id, vw.setUint16(o + 2, 4 + x.data.length), q.set(x.data, o + 4), o + 4 + x.data.length), 8), q; }; const fn6 = (pt, c, id, op = []) => { const l = op.reduce((s, x) => s + 2 + x.data.length, 0), f = new Uint8Array(6 + l), vw = new DataView(f.buffer); return vw.setUint16(0, pt), f[2] = c, f[3] = id, vw.setUint16(4, 4 + l), op.reduce((o, x) => (f[o] = x.type, f[o + 1] = 2 + x.data.length, f.set(x.data, o + 2), o + 2 + x.data.length), 6), f; }; const fn7 = id => { const ub = f1(u), pb = f1(p), ul = ub.length, pl = pb.length, tl = 6 + ul + pl, f = new Uint8Array(2 + tl), vw = new DataView(f.buffer); return vw.setUint16(0, 49187), f[2] = 1, f[3] = id, vw.setUint16(4, tl), f[6] = ul, f.set(ub, 7), f[7 + ul] = pl, f.set(pb, 8 + ul), f; }; const fn8 = d => { let o = d.length >= 2 && 255 === d[0] && 3 === d[1] ? 2 : 0; if (d.length - o < 4) return null; const pt = f3(d, o); return 33 === pt ? { protocol: pt, ip: d.subarray(o + 2) } : d.length - o >= 6 ? { protocol: pt, code: d[o + 2], id: d[o + 3], payload: d.subarray(o + 6), raw: d.subarray(o) } : null; }; const fn9 = d => { const r = []; for (let j = 0; j + 2 <= d.length;) { const t = d[j], l = d[j + 1]; if (l < 2 || j + l > d.length) break; r.push({ type: t, data: d.subarray(j + 2, j + l) }), j += l; } return r; }; const fn10 = async (hs, pt) => { sk = connect({ hostname: hs, port: pt }, { secureTransport: "on", allowHalfOpen: false }), await sk.opened, rd = sk.readable.getReader({ mode: "byob" }), wr = sk.writable.getWriter(), h = hs; }; const fn11 = async () => { const ht = f1(`SSTP_DUPLEX_POST /sra_{BA195980-CD49-458b-9E23-C84EE0ADCD75}/ HTTP/1.1\r\nHost: ${h}\r\nContent-Length: 18446744073709551615\r\nSSTPCORRELATIONID: {${crypto.randomUUID()}}\r\n\r\n`); const pa = new Uint8Array(2); new DataView(pa.buffer).setUint16(0, 1); const mu = new Uint8Array(2); new DataView(mu.buffer).setUint16(0, 1500); await wr.write(cat(ht, fn5(1, [{ id: 1, data: pa }]), fn4(fn6(49185, 1, i++, [{ type: 1, data: mu }])))); const st = await fn2(); for (; "" !== await fn2();); if (!st.includes("200")) throw 0; let sa = !1, ld = !1, au = !1, dn = !1, mi = null; for (let j = 0; j < 25 && !dn; j++) { const pk = await fn3(); if (pk.ctrl) sa || pk.body.length < 2 || 2 !== f3(pk.body, 0) || (sa = !0); else { const pp = fn8(pk.body); if (pp) if (49185 === pp.protocol) if (1 === pp.code) { const a = new Uint8Array(pp.raw); a[2] = 2, await wr.write(ld && !au ? cat(fn4(a), fn4(fn7(i++))) : fn4(a)), ld && (au = !0); } else 2 === pp.code && (ld = !0, au || (await wr.write(fn4(fn7(i++))), au = !0)); else if (49187 === pp.protocol && 2 === pp.code) await wr.write(fn4(fn6(32801, 1, i++, [{ type: 3, data: new Uint8Array(4) }]))); else if (32801 === pp.protocol) if (1 === pp.code) { const a = new Uint8Array(pp.raw); a[2] = 2, await wr.write(fn4(a)); } else if (3 === pp.code) { const o = fn9(pp.payload).find(x => 3 === x.type); o && (mi = [...o.data].join("."), await wr.write(fn4(fn6(32801, 1, i++, [{ type: 3, data: o.data }])))); } else if (2 === pp.code) { const o = fn9(pp.payload).find(x => 3 === x.type); o && (mi = [...o.data].join("."), dn = !0); } } } if (!mi) throw 0; return mi; }; return { connect: fn10, establish: fn11, readPkt: fn3, parsePPP: fn8, get buf() { return b; }, get wr() { return wr; }, close: () => [rd, wr, sk].forEach(x => { try { x?.cancel?.() ?? x?.close?.(); } catch { } }) }; };
+const f17 = (u, p) => { let b = v_b0, i = 1, sk, rd, wr, h; const fn1 = async n => { if (b.length >= n) { const r = b.subarray(0, n); return b = b.subarray(n), r; } const sv = b.length > 0 ? new Uint8Array(b) : null, nd = n - b.length, { value: v, done: d } = await rd.readAtLeast(nd, new Uint8Array(Math.max(16384, nd))); if (d) throw 0; let t; return sv ? (t = cat(sv, v), b = t.subarray(n), t.subarray(0, n)) : (b = v.subarray(n), v.subarray(0, n)); }; const fn2 = async () => { for (; ;) { const x = b.indexOf(10); if (x >= 0) { let l = dec.decode(b.subarray(0, x)); return b = b.subarray(x + 1), l.replace(/\r$/, ""); } const sv = b.length > 0 ? new Uint8Array(b) : null, { value: v, done: d } = await rd.readAtLeast(1, new Uint8Array(16384)); if (d) throw 0; b = sv ? cat(sv, v) : v; } }; const fn3 = async (m = 1e4) => { let t; const to = new Promise((_, r) => { t = setTimeout(() => r("T"), m); }); try { const hd = await Promise.race([fn1(4), to]); clearTimeout(t); const l = f3(hd, 2) & 4095; return { ctrl: 1 == (1 & hd[1]), body: l > 4 ? await fn1(l - 4) : v_b0 }; } catch (e) { throw clearTimeout(t), e; } }; const fn4 = f => { const n = 6 + f.length, q = new Uint8Array(n); return q.set([16, 0, n >> 8 & 15 | 128, 255 & n, 255, 3]), q.set(f, 6), q; }; const fn5 = (m, a = []) => { const l = a.reduce((s, x) => s + 4 + x.data.length, 0), q = new Uint8Array(8 + l), vw = new DataView(q.buffer); return q[0] = 16, q[1] = 1, vw.setUint16(2, 8 + l | 32768), vw.setUint16(4, m), vw.setUint16(6, a.length), a.reduce((o, x) => (q[o + 1] = x.id, vw.setUint16(o + 2, 4 + x.data.length), q.set(x.data, o + 4), o + 4 + x.data.length), 8), q; }; const fn6 = (pt, c, id, op = []) => { const l = op.reduce((s, x) => s + 2 + x.data.length, 0), f = new Uint8Array(6 + l), vw = new DataView(f.buffer); return vw.setUint16(0, pt), f[2] = c, f[3] = id, vw.setUint16(4, 4 + l), op.reduce((o, x) => (f[o] = x.type, f[o + 1] = 2 + x.data.length, f.set(x.data, o + 2), o + 2 + x.data.length), 6), f; }; const fn7 = id => { const ub = f1(u), pb = f1(p), ul = ub.length, pl = pb.length, tl = 6 + ul + pl, f = new Uint8Array(2 + tl), vw = new DataView(f.buffer); return vw.setUint16(0, 49187), f[2] = 1, f[3] = id, vw.setUint16(4, tl), f[6] = ul, f.set(ub, 7), f[7 + ul] = pl, f.set(pb, 8 + ul), f; }; const fn8 = d => { let o = d.length >= 2 && 255 === d[0] && 3 === d[1] ? 2 : 0; if (d.length - o < 4) return null; const pt = f3(d, o); return 33 === pt ? { protocol: pt, ip: d.subarray(o + 2) } : d.length - o >= 6 ? { protocol: pt, code: d[o + 2], id: d[o + 3], payload: d.subarray(o + 6), raw: d.subarray(o) } : null; }; const fn9 = d => { const r = []; for (let j = 0; j + 2 <= d.length;) { const t = d[j], l = d[j + 1]; if (l < 2 || j + l > d.length) break; r.push({ type: t, data: d.subarray(j + 2, j + l) }), j += l; } return r; }; const fn10 = async (hs, pt) => { sk = connect({ hostname: hs, port: pt }, { secureTransport: "on", allowHalfOpen: false }), await sk.opened, rd = sk.readable.getReader({ mode: "byob" }), wr = sk.writable.getWriter(), h = hs; }; const fn11 = async () => { const ht = f1(`SSTP_DUPLEX_POST /sra_{BA195980-CD49-458b-9E23-C84EE0ADCD75}/ HTTP/1.1\r\nHost: ${h}\r\nContent-Length: 18446744073709551615\r\nSSTPCORRELATIONID: {${crypto.randomUUID()}}\r\n\r\n`); const pa = new Uint8Array(2); new DataView(pa.buffer).setUint16(0, 1); const mu = new Uint8Array(2); new DataView(mu.buffer).setUint16(0, 1500); await wr.write(cat(ht, fn5(1, [{ id: 1, data: pa }]), fn4(fn6(49185, 1, i++, [{ type: 1, data: mu }])))); const st = await fn2(); for (; "" !== await fn2();); if (!st.includes("200")) throw 0; let sa = !1, ld = !1, au = !1, dn = !1, mi = null; for (let j = 0; j < 25 && !dn; j++) { const pk = await fn3(); if (pk.ctrl) sa || pk.body.length < 2 || 2 !== f3(pk.body, 0) || (sa = !0); else { const pp = fn8(pk.body); if (pp) if (49185 === pp.protocol) if (1 === pp.code) { const a = new Uint8Array(pp.raw); a[2] = 2, await wr.write(ld && !au ? cat(fn4(a), fn4(fn7(i++))) : fn4(a)), ld && (au = !0); } else 2 === pp.code && (ld = !0, au || (await wr.write(fn4(fn7(i++))), au = !0)); else if (49187 === pp.protocol && 2 === pp.code) await wr.write(fn4(fn6(32801, 1, i++, [{ type: 3, data: new Uint8Array(4) }]))); else if (32801 === protocol) if (1 === pp.code) { const a = new Uint8Array(pp.raw); a[2] = 2, await wr.write(fn4(a)); } else if (3 === pp.code) { const o = fn9(pp.payload).find(x => 3 === x.type); o && (mi = [...o.data].join("."), await wr.write(fn4(fn6(32801, 1, i++, [{ type: 3, data: o.data }])))); } else if (2 === pp.code) { const o = fn9(pp.payload).find(x => 3 === x.type); o && (mi = [...o.data].join("."), dn = !0); } } } if (!mi) throw 0; return mi; }; return { connect: fn10, establish: fn11, readPkt: fn3, parsePPP: fn8, get buf() { return b; }, get wr() { return wr; }, close: () => [rd, wr, sk].forEach(x => { try { x?.cancel?.() ?? x?.close?.(); } catch { } }) }; };
 const f18 = (s, si, di, dp) => { const sp = 1e4 + f6() % 5e4, sb = f8(si), db = f8(di); let sq = f7(), ak = 0; const it = new Uint8Array(20); it.set([69, 0, 0, 0, 0, 0, 64, 0, 64, 6]), it.set(sb, 12), it.set(db, 16); const ps = new Uint8Array(1432); ps.set(sb), ps.set(db, 4), ps[9] = 6; const fn1 = (fl, d = v_b0) => { const pl = d.length, tl = 20 + pl, il = 20 + tl, st = 8 + il, f = new Uint8Array(st), vw = new DataView(f.buffer); return f.set([16, 0, st >> 8 & 15 | 128, 255 & st, 255, 3, 0, 33]), f.set(it, 8), vw.setUint16(10, il), vw.setUint16(12, f6()), vw.setUint16(18, f9(f, 8, 20)), vw.setUint16(28, sp), vw.setUint16(30, dp), vw.setUint32(32, sq), vw.setUint32(36, ak), f[40] = 80, f[41] = fl, vw.setUint16(42, 65535), pl && f.set(d, 48), ps[10] = tl >> 8, ps[11] = 255 & tl, ps.set(f.subarray(28, 28 + tl), 12), vw.setUint16(44, f9(ps, 0, 12 + tl)), f; }; const fn2 = ip => { if (ip.length < 40 || 6 !== ip[9]) return null; const hl = 4 * (15 & ip[0]); return f3(ip, hl) !== dp || f3(ip, hl + 2) !== sp ? null : { flags: ip[hl + 13], seq: f4(ip, hl + 4), off: hl + 4 * (ip[hl + 12] >> 4 & 15) }; }; const fn3 = async () => { await s.wr.write(fn1(2)), sq++; for (let j = 0; j < 30; j++) { const pk = await s.readPkt(); if (!pk.ctrl) { const pp = s.parsePPP(pk.body); if (pp && 33 === pp.protocol) { const m = fn2(pp.ip); if (m && 18 === (18 & m.flags)) return ak = m.seq + 1 >>> 0, s.wr.write(fn1(16)), !0; } } } throw 0; }; return { frame: fn1, match: fn2, handshake: fn3, get seq() { return sq; }, set seq(v) { sq = v; }, get ack() { return ak; }, set ack(v) { ak = v; } }; };
 const f19 = async ({ host: h, port: p, username: u, password: pw }, ip, tp) => { 
     const s = f17(u, pw), cl = () => s.close(); 
@@ -234,7 +238,28 @@ const f_padr = (b, o, t) => { const l = 3 === t ? b[o++] : 1 === t ? 4 : 4 === t
 const f_vmore = c => { if (c.byteLength < 24 || !matchID(c)) return null; let o = 19 + c[17]; if (o + 3 > c.byteLength) return null; let t = c[o + 2]; const p = c[o] << 8 | c[o + 1]; 1 !== t && (t += 1); const a = f_padr(c, o + 3, t); return a ? { t: t, b: a.b, p: p, u: 2 === c[18 + c[17]], v: c[0], o: a.o } : null; };
 const f_trajon = c => { if (c.byteLength < 60) return null; for (let i = 0; i < 56; i++) if (c[i] !== authBuf[i]) return null; if (c[56] !== 13 || c[57] !== 10 || c[58] !== 1) return null; const t = c[59]; let o = 60, l = 1 === t ? 4 : 3 === t ? c[o++] : 4 === t ? 16 : null; if (null === l) return null; const n = o + l; if (n + 4 > c.byteLength || c[n + 2] !== 13 || c[n + 3] !== 10) return null; return { t: t, b: c.subarray(o, n), p: c[n] << 8 | c[n + 1], o: n + 4 }; };
 const f43 = d => { if (d.length < 1) return null; const t = d[0]; let h, p, o; if (1 === t && d.length >= 7) { h = `${d[1]}.${d[2]}.${d[3]}.${d[4]}`; p = f3(d, 5); o = 7; } else if (3 === t && d.length >= 4 + d[1]) { h = dec.decode(d.subarray(2, 2 + d[1])); p = f3(d, 2 + d[1]); o = 4 + d[1]; } else if (4 === t && d.length >= 19) { h = `[${Array.from({ length: 8 }, (_, i) => (d[1 + 2 * i] << 8 | d[2 + 2 * i]).toString(16)).join(":")}]`; p = f3(d, 17); o = 19; } else return null; return { h: h, p: p, o: o }; };
-const f_cd = (h, p, m = CFG.connMs) => new Promise((ok, no) => { h = String(h).trim(), h[0] == "[" && h[h.length - 1] == "]" && (h = h.slice(1, -1)); const s = connect({ hostname: h, port: p }); let e = 0; const t = setTimeout(() => { if (e) return; e = 1; try { s.close(); } catch { } no(0); }, m); s.opened.then(() => { if (e) { try { s.close(); } catch { } return; } e = 1; clearTimeout(t); ok(s); }, x => { if (e) return; e = 1; clearTimeout(t); try { s.close(); } catch { } no(x); }); });
+const f_cd_single = (h, p, m) => new Promise((ok, no) => {
+    h = String(h).trim(), h[0] == "[" && h[h.length - 1] == "]" && (h = h.slice(1, -1)); 
+    const s = connect({ hostname: h, port: p }); 
+    let e = 0; 
+    const t = setTimeout(() => { if (e) return; e = 1; try { s.close(); } catch { } no(0); }, m); 
+    s.opened.then(() => { if (e) { try { s.close(); } catch { } return; } e = 1; clearTimeout(t); ok(s); }, x => { if (e) return; e = 1; clearTimeout(t); try { s.close(); } catch { } no(x); }); 
+});
+const f_cd = async (h, p, m = CFG.connMs) => {
+    if (RACE < 2) return f_cd_single(h, p, m);
+    let ok = 0;
+    const c = [];
+    for (let i = 0; i < RACE; i++) {
+        c.push(f_cd_single(h, p, m).then(sock => {
+            if (ok) {
+                try { sock.close(); } catch {}
+                return Promise.reject(0);
+            }
+            return ok = sock;
+        }));
+    }
+    try { return await Promise.any(c); } catch { throw 0; }
+};
 const f_p16 = (d, o, v) => { d[o] = v >> 8 & 255; d[o + 1] = v & 255; };
 const f_evp = async (pw, kl) => { let k = v_b0, pv = v_b0; const p = enc.encode(pw); while (k.length < kl) { const d = new Uint8Array(pv.length + p.length); d.set(pv), d.set(p, pv.length), pv = new Uint8Array(await crypto.subtle.digest("MD5", d)); const nk = new Uint8Array(k.length + pv.length); nk.set(k), nk.set(pv, k.length), k = nk; } return k.slice(0, kl); };
 const f_hkdf = async (ikm, salt, info, len) => { const k1 = await crypto.subtle.importKey("raw", salt.length ? salt : v_z20, { name: "HMAC", hash: "SHA-1" }, !1, ["sign"]), prk = new Uint8Array(await crypto.subtle.sign("HMAC", k1, ikm)); const k2 = await crypto.subtle.importKey("raw", prk, { name: "HMAC", hash: "SHA-1" }, !1, ["sign"]), okm = new Uint8Array(Math.ceil(len / 20) * 20); let pv = v_b0; for (let i = 0; i < Math.ceil(len / 20); i++) { pv = new Uint8Array(await crypto.subtle.sign("HMAC", k2, cat(pv, info, new Uint8Array([i + 1])))), okm.set(pv, i * 20); } return okm.slice(0, len); };
@@ -401,9 +426,11 @@ function parsePathConfig(url) {
 }
 async function handleXHTTP(req, proxyPool) {
     if (!req.body) return new Response(null, { status: 400 });
+    
+    const H_opts = { highWaterMark: 1048576 };
     const trans = typeof IdentityTransformStream === "function" 
-        ? new (/** @type {any} */ (IdentityTransformStream))({ highWaterMark: 1048576 }) 
-        : new TransformStream(void 0, { highWaterMark: 1048576 });
+        ? new (/** @type {any} */ (IdentityTransformStream))(void 0, H_opts) 
+        : new TransformStream(void 0, H_opts);
 
     const stReader = (() => {
         try { return { reader: req.body.getReader({ mode: "byob" }), byob: !0 }; } 
@@ -438,14 +465,26 @@ async function handleXHTTP(req, proxyPool) {
 
     (async () => {
         let sBuf = new Uint8Array(0), session = null;
+        let hsTimeout = setTimeout(() => { 
+            try { rd.cancel(); } catch { } 
+            abortSession(); 
+        }, 15000);
+
         while (!session) {
             const probe = sniffSession(sBuf);
-            if (probe.session) { session = probe.session; break; }
-            if (probe.error || sBuf.byteLength >= CFG.hsMax) throw 0;
+            if (probe.session) { 
+                session = probe.session; 
+                clearTimeout(hsTimeout);
+                break; 
+            }
+            if (probe.error || sBuf.byteLength >= CFG.hsMax) {
+                clearTimeout(hsTimeout);
+                throw 0;
+            }
             const rem = CFG.hsMax - sBuf.byteLength, nextLen = Math.min(0 === sBuf.byteLength ? CFG.xhInit : CFG.xhNext, rem);
-            if (nextLen <= 0) throw 0;
+            if (nextLen <= 0) { clearTimeout(hsTimeout); throw 0; }
             const { done: dn, value: vl } = await dt_read(stReader, nextLen);
-            if (dn) throw 0;
+            if (dn) { clearTimeout(hsTimeout); throw 0; }
             if (vl.byteLength) sBuf = sBuf.byteLength ? cat(sBuf, vl) : new Uint8Array(vl);
         }
 
