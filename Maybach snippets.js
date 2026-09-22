@@ -1,7 +1,7 @@
 //copy of snippets jacobax xhttp | 2026-09-18 18:03:54 | 1.4.3 (Custom Config Fusion)
 import{connect as t}from"cloudflare:sockets";
 
-const n="ProxyIP.CMLiussss.net",r="",RACE=1,a={chunk:65536,dnPack:131072,dnTail:2048,dnMs:10,upPack:65536,maxED:8192,hsMax:16384,xhInit:8192,xhNext:4096},s={"Content-Type":"application/octet-stream","grpc-status":"0","X-Accel-Buffering":"no","Cache-Control":"no-store"},i=new Map,o=new Map;
+const n="ProxyIP.CMLiussss.net",r="",RACE=1,a={chunk:65536,dnPack:131072,dnTail:2048,dnMs:20,upPack:65536,maxED:8192,hsMax:16384,xhInit:8192,xhNext:4096},s={"Content-Type":"application/octet-stream","grpc-status":"0","X-Accel-Buffering":"no","Cache-Control":"no-store"},i=new Map,o=new Map;
 
 let h=null,u=null,w=null,_=null;
 const f=/^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)$/,p=new Uint8Array(0),d=new TextDecoder,g=new TextEncoder,b=new Uint8Array([33,18,164,66]),m=new Uint8Array(20),A=g.encode("ss-subkey"),k=t=>15&(t>64?t+9:t),U=new Uint8Array(16);for(let t=0,e=0;t<16;t++){let n=r.charCodeAt(e++);45===n&&(n=r.charCodeAt(e++));let a=r.charCodeAt(e++);45===a&&(a=r.charCodeAt(e++)),U[t]=k(n)<<4|k(a)}
