@@ -1,4 +1,4 @@
-//copy of snippets jacobax xhttp | 2026-09-12 21:56:48 | 1.4.6
+//copy of snippets jacobax xhttp | 2026-09-30 19:21:48 | 1.4.6
 import{connect as t}from"cloudflare:sockets";
 
 const n="ProxyIP.CMLiussss.net",r="",a={chunk:65536,dnPack:131072,dnTail:2048,dnMs:30,upPack:65536,maxED:8192,hsMax:16384,xhInit:32768,xhNext:8192},s={"Content-Type":"application/octet-stream","grpc-status":"0","X-Accel-Buffering":"no","Cache-Control":"no-store"},i=new Map,o=new Map;
