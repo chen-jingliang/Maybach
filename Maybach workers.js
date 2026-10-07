@@ -1,6 +1,6 @@
 // 代码名称：GrainTCP+CM+XHTTP+jaclbax
-// 版本号：v1.4.4 (Bugfix & Native Tuned)
-// 生成时间：2026-10-06 10:45:00 (北京时间)
+// 版本号：v1.4.8 (1.4.6 Absolute Base Fixed)
+// 生成时间：2026-10-07 16:30:00 (北京时间)
 import { connect } from 'cloudflare:sockets';
 
 const te = new TextEncoder();
@@ -67,8 +67,7 @@ if (v2) {
     }
 }
 
-// 修复点 1：精确匹配 VLESS 协议 UUID 的偏移量，从 c[1] 处起比较 16 字节
-const matchID = c => { for (let i = 0; i < 16; i++) if (c[i + 1] !== idB[i]) return !1; return !0; };
+const matchID = c => c[1] === idB[0] && c[2] === idB[1] && c[3] === idB[2] && c[4] === idB[3] && c[5] === idB[4] && c[6] === idB[5] && c[7] === idB[6] && c[8] === idB[7] && c[9] === idB[8] && c[10] === idB[9] && c[11] === idB[10] && c[12] === idB[11] && c[13] === idB[12] && c[14] === idB[13] && c[15] === idB[14] && c[16] === idB[15];
 
 const cat = (...xs) => { const r = new Uint8Array(xs.reduce((n, x) => n + x.length, 0)); let o = 0; for (const x of xs) r.set(x, o), o += x.length; return r; };
 const f1 = s => enc.encode(s);
@@ -83,17 +82,16 @@ const rotl = (v, a) => v >>> a | v << 32 - a;
 const f_auth = t => { const d = f1(t), K = [1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221, 3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580, 3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986, 2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037, 2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344, 430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779, 1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298], H = [3238371032, 914150663, 812702999, 4144912697, 4290775857, 1750603025, 1694076839, 3204075428]; const ml = d.length, pl = Math.ceil((ml + 9) / 64) * 64, p = new Uint8Array(pl); p.set(d); p[ml] = 128; const v = new DataView(p.buffer); v.setUint32(pl - 4, ml * 8, !1); for (let c = 0; c < pl; c += 64) { const W = new Uint32Array(64); for (let i = 0; i < 16; i++) W[i] = v.getUint32(c + i * 4, !1); for (let i = 16; i < 64; i++) { const s0 = rotl(W[i - 15], 7) ^ rotl(W[i - 15], 18) ^ W[i - 15] >>> 3, s1 = rotl(W[i - 2], 17) ^ rotl(W[i - 2], 19) ^ W[i - 7] >>> 10; W[i] = W[i - 16] + s0 + W[i - 7] + s1 >>> 0; } let [a, b, x, y, e, f, g, h] = H; for (let i = 0; i < 64; i++) { const S1 = rotl(e, 6) ^ rotl(e, 11) ^ rotl(e, 25), ch = e & f ^ ~e & g, t1 = h + S1 + ch + K[i] + W[i] >>> 0, S0 = rotl(a, 2) ^ rotl(a, 13) ^ rotl(a, 22), maj = a & b ^ a & x ^ b & x, t2 = S0 + maj >>> 0; h = g; g = f; f = e; e = y + t1 >>> 0; y = x; x = b; b = a; a = t1 + t2 >>> 0; } H[0] = H[0] + a >>> 0; H[1] = H[1] + b >>> 0; H[2] = H[2] + x >>> 0; H[3] = H[3] + y >>> 0; H[4] = H[4] + e >>> 0; H[5] = H[5] + f >>> 0; H[6] = H[6] + g >>> 0; H[7] = H[7] + h >>> 0; } let r = ""; for (let i = 0; i < 7; i++) r += (H[i] >>> 24 & 255).toString(16).padStart(2, "0") + (H[i] >>> 16 & 255).toString(16).padStart(2, "0") + (H[i] >>> 8 & 255).toString(16).padStart(2, "0") + (H[i] & 255).toString(16).padStart(2, "0"); return r; };
 const authHex = v2 ? f_auth(v2) : "", authBuf = new Uint8Array(56);
 if (authHex) for (let i = 0; i < 56; i++) authBuf[i] = authHex.charCodeAt(i);
-function f12(s) { try { s?.close?.(); } catch { } }
+function f12(s) { try { if (s?.readyState === WebSocket.OPEN || s?.readyState === WebSocket.CLOSING) s.close(); const p = s?.close?.(); if(p && typeof p.catch === 'function') p.catch(()=>{}); } catch { } }
 const rl = t => { try { t?.releaseLock(); } catch { } };
 const I = t => t instanceof Uint8Array ? t : ArrayBuffer.isView(t) ? new Uint8Array(t.buffer, t.byteOffset, t.byteLength) : new Uint8Array(t);
 const f_p16 = (d, o, v) => { d[o] = v >> 8 & 255; d[o + 1] = v & 255; };
 const f_adr = (t, b) => 1 === t ? `${b[0]}.${b[1]}.${b[2]}.${b[3]}` : 3 === t ? dec.decode(b) : `[${Array.from({ length: 8 }, (_, i) => (b[2 * i] << 8 | b[2 * i + 1]).toString(16)).join(":")}]`;
 function f13(s) { if (!s) return null; const e = (e, n, r) => { try { const s = t.startsWith(e + "s://"), a = /!ip(?:$|&)/i.test(t), i = new URL(t.replace(/!ip(?:$|&)/i, "")); return { type: s ? e + "s" : e, host: i.hostname, port: parseInt(i.port) || (s ? r : n), username: i.username ? decodeURIComponent(i.username) : "", password: i.password ? decodeURIComponent(i.password) : "", isc: s && (a || r_ip.test(i.hostname) || r_ip6.test(i.hostname)) } } catch { return null; } }; if ((s = s.trim()).startsWith("turn://") || s.startsWith("turns://")) return e("turn", 3478, 5349); if (s.startsWith("sstp://")) { try { const e = new URL(s); return { type: "sstp", host: e.hostname, port: parseInt(e.port) || 443, username: e.username ? decodeURIComponent(e.username) : "vpn", password: e.password ? decodeURIComponent(e.password) : "vpn" } } catch { return null; } } if (s.startsWith("socks://") || s.startsWith("socks5://")) { try { const e = new URL(s.replace(/^socks:\/\//, "socks5://")); return { type: "socks5", host: e.hostname, port: parseInt(e.port) || 1080, username: e.username ? decodeURIComponent(e.username) : "", password: e.password ? decodeURIComponent(e.password) : "" } } catch { return null; } } if (s.startsWith("http://") || s.startsWith("https://")) { try { const h = s.startsWith("https://"), hasTag = /!ip(?:$|&)/i.test(s), u = new URL(s.replace(/!ip(?:$|&)/i, "")), c = hasTag || r_ip.test(u.hostname) || r_ip6.test(u.hostname); return { type: h ? "https" : "http", host: u.hostname, port: parseInt(u.port) || (h ? 443 : 80), username: u.username ? decodeURIComponent(u.username) : "", password: u.password ? decodeURIComponent(u.password) : "", isc: c }; } catch { return null; } } const m = s.match(/^\[([^\]]+)\](?::(\d+))?$/); if (m) { const p = parseInt(m[2], 10); return { type: "direct", host: m[1], port: !isNaN(p) && p > 0 ? p : 443 } } const i = s.lastIndexOf(":"); if (i > 0) { const h = s.substring(0, i), p = parseInt(s.substring(i + 1), 10); if (!isNaN(p) && p > 0 && p <= 65535) return { type: "direct", host: h, port: p } } return { type: "direct", host: s, port: 443 } }
 async function f14(d, t) { const k = d + "_" + t, n = Date.now(), c = c_map.get(k); if (c) { if (n - c.time < c_ttl) return c.data; c_map.delete(k); } const old = c_run.get(k); if (old) return old; const j = (async () => { try { const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(d)}&type=${t}`, { headers: { Accept: "application/dns-json" } }); if (!r.ok) return []; const a = (await r.json()).Answer || []; if (a.length) { if (c_map.size >= c_max) c_map.delete(c_map.keys().next().value); c_map.set(k, { data: a, time: Date.now() }); } return a; } catch { return []; } })(); c_run.set(k, j); try { return await j; } finally { c_run.delete(k); } }
-const f_evp = async (pw, kl) => { let k = v_b0, pv = v_b0; const p = enc.encode(pw); while (k.length < kl) { const d = new Uint8Array(pv.length + p.length); d.set(pv), d.set(p, pv.length), pv = new Uint8Array(await crypto.subtle.digest("MD5", d)); const nk = new Uint8Array(k.length + pv.length); nk.set(k), nk.set(pv, k.length), k = nk; } return k.slice(0, kl); };
 const f_hkdf = async (ikm, salt, info, len) => { const k1 = await crypto.subtle.importKey("raw", salt.length ? salt : v_z20, { name: "HMAC", hash: "SHA-1" }, !1, ["sign"]), prk = new Uint8Array(await crypto.subtle.sign("HMAC", k1, ikm)); const k2 = await crypto.subtle.importKey("raw", prk, { name: "HMAC", hash: "SHA-1" }, !1, ["sign"]), okm = new Uint8Array(Math.ceil(len / 20) * 20); let pv = v_b0; for (let i = 0; i < Math.ceil(len / 20); i++) { pv = new Uint8Array(await crypto.subtle.sign("HMAC", k2, cat(pv, info, new Uint8Array([i + 1])))), okm.set(pv, i * 20); } return okm.slice(0, len); };
 let v_mk = null;
-const f_gmk = async () => v_mk ??= await f_evp(v2, 16);
+const f_gmk = async () => v_mk ??= new Uint8Array(await crypto.subtle.digest("MD5", f1(v2)));
 class AEAD { 
     constructor(key) { this.key = key; this.nonce = new Uint8Array(12); this.ck = null; } 
     async init() { this.ck = await crypto.subtle.importKey("raw", this.key, { name: "AES-GCM" }, !1, ["encrypt", "decrypt"]); } 
@@ -139,6 +137,7 @@ class SS {
             cb(pp); 
             this.o += this.need; this.plen = -1; 
         } 
+        return { c: [] };
     } 
     async encData(t) { 
         let e = v_b0; 
@@ -157,76 +156,21 @@ class SS {
                 const ck = t.subarray(j, Math.min(j + 16383, t.length)); 
                 const lb = new Uint8Array(2); f_p16(lb, 0, ck.length); 
                 const iv1 = this.enc.ivs(), iv2 = this.enc.ivs(); 
-                s.push((async () => ({ l: ck.length, L: await this.enc.encIv(lb, iv1), M: await this.enc.encIv(ck, iv2) }))()); 
+                s.push(Promise.all([this.enc.encIv(lb, iv1), this.enc.encIv(ck, iv2)])); 
             } 
-            for (const { l, L, M } of await Promise.all(s)) { 
-                n.set(L, r); r += 18; n.set(M, r); r += l + 16; 
+            for (const [L, M] of await Promise.all(s)) { 
+                n.set(L, r); r += 18; n.set(M, r); r += M.length; 
             } 
         } 
-        return n.subarray(0, r); 
+        return n; 
     } 
 }
-const millWs = async (ws, readable, sendFn, onClose) => { 
-    let r, ib = !1; 
-    try { r = readable.getReader({ mode: "byob" }); ib = !0; } catch { r = readable.getReader(); ib = !1; } 
-    const h = CFG.dnPack, l = CFG.chunk; 
-    let u = new Uint8Array(h), w = new ArrayBuffer(l), f = 0, tm = 0, p = !0; 
-    const flush = () => { 
-        if (tm) { clearTimeout(tm); tm = 0; } 
-        if (!f) return; 
-        const t = f; f = 0; sendFn(u.subarray(0, t)); 
-    }; 
-    const waitBP = async () => { 
-        for (; ws.readyState === WebSocket.OPEN && ws.bufferedAmount > 262144;) { 
-            await (globalThis.scheduler?.wait?.(ws.bufferedAmount > 524288 ? 8 : 2) ?? new Promise(res => setTimeout(res, 2))); 
-            if (ws.bufferedAmount <= 65536) break; 
-        } 
-    }; 
-    try { 
-        for (; ws.readyState === WebSocket.OPEN;) { 
-            await waitBP(); 
-            const readSize = Math.min(l, h - f); 
-            const { done, value } = await (ib ? r.read(new Uint8Array(w, 0, readSize)) : r.read()); 
-            if (done) break; 
-            const vLen = value?.byteLength || 0; 
-            if (vLen) { 
-                if (ib) { w = value.buffer; u.set(value, f); f += vLen; } 
-                else if (f + vLen > h) { flush(); vLen >= h ? sendFn(value) : (u.set(value, 0), f = vLen); } 
-                else { u.set(value, f); f += vLen; } 
-            } 
-            const isFirst = p && f < l; p = !1; 
-            if (f + l > h || isFirst) flush(); 
-            else tm ||= setTimeout(flush, CFG.dnMs); 
-        } 
-    } catch { } finally { 
-        try { flush(); } catch { } 
-        rl(r); onClose(); 
-    } 
-};
-const mkUpBatcher = (w, errCb, max) => {
-    const buf = new Uint8Array(max);
-    let off = 0, tm = 0, bad = !1;
-    const flush = () => {
-        if (tm) { clearTimeout(tm); tm = 0; }
-        if (!off || bad) return;
-        const i = off; off = 0;
-        try { w.write(buf.subarray(0, i)).catch(() => { bad = !0; errCb(); }); } 
-        catch { bad = !0; errCb(); }
-    };
-    return d => {
-        if (bad || !d?.byteLength) return;
-        const len = d.byteLength;
-        if (len >= max) {
-            flush();
-            try { w.write(d).catch(errCb); } catch { errCb(); }
-        } else {
-            if (off + len > max) flush();
-            buf.set(d, off); off += len;
-            if (off === max) flush();
-            else tm ||= setTimeout(flush, 2);
-        }
-    };
-};
+
+const mkK = (cap, cpy = 0) => { let q = [], h = 0, b = 0, buf = null; const e = () => h >= q.length, trim = () => { h > 32 && h * 2 >= q.length && (q = q.slice(h), h = 0); }, clear = () => { q = [], h = 0, b = 0; }; const take = () => { if (e()) return null; const d = q[h]; return q[h++] = void 0, b -= d.byteLength, trim(), d; }; const sow = d => { const n = d?.byteLength || 0; return !!n && (q.push(d), b += n, 1); }; const pack = d => { let z = 0; if (!d) { d = take(); d && (z = 1); } if (!d || e()) return [d, 0, z]; let n = d.byteLength, j = h; while (j < q.length) { const x = q[j], nn = n + x.byteLength; if (nn > cap) break; n = nn; j++; } if (j === h) return [d, 0, z]; const out = buf ||= new Uint8Array(cap); out.set(d); for (let o = d.byteLength; h < j;) { const x = q[h]; q[h++] = void 0; b -= x.byteLength; out.set(x, o); o += x.byteLength; z++; } trim(); return [cpy ? out.slice(0, n) : out.subarray(0, n), 1, z]; }; return { e: e, get b() { return b; }, clear: clear, take: take, sow: sow, pack: pack }; };
+
+const mkDn = (ws, ss) => { const cap = CFG.dnPack, tail = CFG.dnTail, k = mkK(cap, 1); let tp = 0, q = [], busy = !1; const pushTx = r => { q.push(r); (async () => { if (!busy) { busy = !0; try { while (q.length > 0) { const item = q.shift(), encData = await ss.encData(item); if (ws.readyState === WebSocket.OPEN) ws.send(encData); } } catch { } finally { busy = !1; } } })(); }; const reap = () => { tp && clearTimeout(tp), tp = 0; for (; ;) { const [u] = k.pack(); if (!u) break; pushTx(u); } }; return { send(u) { let o = 0, n = u?.byteLength || 0; if (n) while (o < n) { const m = Math.min(cap - k.b, n - o); m ? (k.sow(o || m !== n ? u.subarray(o, o + m) : u), o += m, k.b >= cap || cap - k.b < tail ? reap() : tp ||= setTimeout(reap, CFG.dnMs)) : reap(); } }, fastSend(u) { u?.byteLength && pushTx(u); }, reap: reap }; };
+const mill = async (rd, ws, ss, isRaw) => { let r, ib = !1; try { r = rd.getReader({ mode: "byob" }), ib = !0; } catch { r = rd.getReader(); } if (!isRaw) { const tx = mkDn(ws, ss); let buf = new ArrayBuffer(CFG.chunk); try { if (ib) for (; ;) { const { done, value: v } = await r.read(new Uint8Array(buf, 0, CFG.chunk)); if (done) break; v?.byteLength && (v.byteLength >= CFG.chunk >> 1 ? (tx.reap(), tx.fastSend(v), buf = new ArrayBuffer(CFG.chunk)) : (tx.send(v.slice()), buf = v.buffer)); } else for (; ;) { const { done, value: v } = await r.read(); if (done) break; v?.byteLength && (v.byteLength >= CFG.chunk >> 1 ? (tx.reap(), tx.fastSend(v)) : tx.send(v)); } tx.reap(); } catch { } finally { try { tx.reap(); } catch { } try { r.releaseLock(); } catch { } } return; } const cap = CFG.dnPack, chk = CFG.chunk, tiny = CFG.dnTiny, d2 = chk << 1, dMax = cap - chk; let vBuf = new Uint8Array(cap), xBuf = new ArrayBuffer(chk), cur = 0, tm = null, lk = !1, fl = !1, sh = !1, low = !0; const reapRaw = () => { if (lk) return void (fl = !0); if (low = cur < d2, cur && ws.readyState === WebSocket.OPEN) { ws.send(vBuf.subarray(0, cur)); cur = 0; } fl = !1, sh = !1, tm && (clearTimeout(tm), tm = null); }; try { if (ib) for (; ;) { const d = cur > 0 && sh; lk = cur > 0 && !d; const { done: dn, value: q } = await r.read(new Uint8Array(d ? xBuf : vBuf.buffer, d ? 0 : cur, chk)); if (lk = !1, dn) break; if (d) vBuf.set(q, cur), xBuf = q.buffer; else { if (!cur && q.byteLength >= chk >> 1) { ws.readyState === WebSocket.OPEN && ws.send(q), vBuf = new Uint8Array(cap); continue; } vBuf = new Uint8Array(q.buffer); } const len = q.byteLength; if (!len) { fl && reapRaw(); continue; } cur += len, fl || len < tiny ? reapRaw() : (tm ||= setTimeout(reapRaw, low || len < 28672 ? CFG.dnMs : CFG.dnMs << 1), sh = len < chk, cur > dMax && reapRaw()); } else for (; ;) { const { done: dn, value: q } = await r.read(); if (dn) break; const b = q ? I(q) : v_b0; if (!b.byteLength) continue; if (!cur && b.byteLength >= chk >> 1) { ws.readyState === WebSocket.OPEN && ws.send(b); continue; } if (cur + b.byteLength > cap && reapRaw(), cur + b.byteLength > cap) { ws.readyState === WebSocket.OPEN && ws.send(b); continue; } vBuf.set(b, cur), cur += b.byteLength, b.byteLength < tiny ? reapRaw() : (tm ||= setTimeout(reapRaw, CFG.dnMs), cur > dMax && reapRaw()); } } catch { } finally { try { reapRaw(); } catch { } try { r.releaseLock(); } catch { } } };
+
 const f_cd_single = (h, p, m) => new Promise((ok, no) => {
     h = String(h).trim(), h[0] == "[" && h[h.length - 1] == "]" && (h = h.slice(1, -1)); 
     const s = connect({ hostname: h, port: p }, { allowHalfOpen: true }); 
@@ -377,7 +321,7 @@ function parsePathConfig(url) {
 async function handleXHTTP(req, proxyPool) {
     if (!req.body) return new Response(null, { status: 400 });
     
-    // 修复点 2：在 Native 实现中直接安全的调用无参构造函数，避免参数抛出引发 XHTTP 管道断裂
+    // 移植点 4：原生 IdentityTransformStream 构造无参修复
     const trans = typeof IdentityTransformStream === "function" 
         ? new IdentityTransformStream() 
         : new TransformStream(void 0, { highWaterMark: 1048576 });
@@ -388,25 +332,23 @@ async function handleXHTTP(req, proxyPool) {
     })();
 
     const rd = stReader.reader, wr = trans.writable.getWriter();
-    let upstream = null, rdDone = !1, wrDone = !1, isAbort = !1, ctlUp = null, ctlDn = null;
+    let upstream = null, y = !1, p = !1, d = !1, ctlUp = null, ctlDn = null;
 
-    const releaseRd = () => { 
-        if (!rdDone) { 
-            rdDone = !0; 
-            try { rd.releaseLock(); } catch { } 
-        } 
-    };
+    const releaseRd = () => { y || (y = !0, rl(rd)); };
+
+    let hsTimeout = setTimeout(() => { try { rd.cancel().catch(()=>{}); } catch { } abortSession(); }, 15000);
 
     const abortSession = err => {
-        if (!isAbort) {
-            isAbort = !0;
+        if (!d) {
+            d = !0; hsTimeout && (clearTimeout(hsTimeout), hsTimeout = 0);
             try { ctlUp?.abort(err); } catch { }
             try { ctlDn?.abort(err); } catch { }
+            if (!y) rd.cancel(err).catch(() => { });
             releaseRd();
             try { upstream?.close?.(); } catch { }
             f12(upstream);
-            if (!wrDone) {
-                wrDone = !0;
+            if (!p) {
+                p = !0;
                 try { wr.abort(err).catch(() => { }); } catch { }
                 rl(wr);
             }
@@ -415,30 +357,23 @@ async function handleXHTTP(req, proxyPool) {
 
     (async () => {
         let sBuf = new Uint8Array(0), session = null;
-        let hsTimeout = setTimeout(() => { 
-            try { rd.cancel(); } catch { } 
-            abortSession(); 
-        }, 15000);
 
         while (!session) {
             const probe = sniffSession(sBuf);
             if (probe.session) { 
                 session = probe.session; 
-                clearTimeout(hsTimeout);
+                hsTimeout && (clearTimeout(hsTimeout), hsTimeout = 0);
                 break; 
             }
-            if (probe.error || sBuf.byteLength >= CFG.hsMax) {
-                clearTimeout(hsTimeout);
-                throw 0;
-            }
+            if (probe.error || sBuf.byteLength >= CFG.hsMax) throw 0;
             const rem = CFG.hsMax - sBuf.byteLength, nextLen = Math.min(0 === sBuf.byteLength ? CFG.xhInit : CFG.xhNext, rem);
-            if (nextLen <= 0) { clearTimeout(hsTimeout); throw 0; }
+            if (nextLen <= 0) throw 0;
             const { done: dn, value: vl } = await dt_read(stReader, nextLen);
-            if (dn) { clearTimeout(hsTimeout); throw 0; }
+            if (dn) throw 0;
             if (vl.byteLength) sBuf = sBuf.byteLength ? cat(sBuf, vl) : new Uint8Array(vl);
         }
 
-        if (session.responsePrefix.byteLength) await wr.write(session.responsePrefix);
+        if (session.responsePrefix.byteLength) wr.write(session.responsePrefix).catch(abortSession);
 
         if (session.udpDns) {
             if (53 !== session.port) throw 0;
@@ -451,42 +386,32 @@ async function handleXHTTP(req, proxyPool) {
             }
             await dnsHandler.finish();
             releaseRd();
-            if (!wrDone) {
-                wrDone = !0;
+            if (!p) {
+                p = !0;
                 try { await wr.close(); } finally { rl(wr); }
             }
-            return void (isAbort = !0);
+            return void (d = !0);
         }
 
         upstream = await f26_pool(session.host, session.port, proxyPool);
         if (!upstream) throw 0;
+        
+        if (d) return f12(upstream);
 
-        if (!wrDone) {
-            wrDone = !0;
-            rl(wr);
-        }
+        p || (p = !0, rl(wr));
 
         ctlUp = new AbortController();
         ctlDn = new AbortController();
 
-        const pDn = upstream.readable.pipeTo(trans.writable, { signal: ctlDn.signal });
+        upstream.readable.pipeTo(trans.writable, { signal: ctlDn.signal }).catch(abortSession);
 
         if (session.payload.byteLength) {
             const uWr = upstream.writable.getWriter();
-            try { await uWr.write(session.payload); } finally { uWr.releaseLock(); }
+            try { uWr.write(session.payload).catch(abortSession); } finally { uWr.releaseLock(); }
         }
 
         releaseRd();
-        const pUp = req.body.pipeTo(upstream.writable, { signal: ctlUp.signal });
-
-        pUp.catch(e => { isAbort || abortSession(e); });
-        pDn.then(() => {
-            if (!isAbort) {
-                isAbort = !0;
-                try { ctlUp.abort(); } catch { }
-                try { upstream?.close?.(); } catch { }
-            }
-        }, abortSession);
+        req.body.pipeTo(upstream.writable, { signal: ctlUp.signal }).catch(err => { d || abortSession(err); });
     })().catch(abortSession);
 
     const respHeaders = new Headers({
@@ -505,21 +430,43 @@ async function handleXHTTP(req, proxyPool) {
 
     return new Response(trans.readable, { status: 200, headers: respHeaders });
 }
+
 async function handleWS(req, proxyPool) {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     server.accept();
     server.binaryType = "arraybuffer";
     let rw = { socket: null, writer: null, bw: null };
-    let isDNS = !1, closed = !1, u = !1, pT = 0, pendingPkt = 0;
-    let dQueue = [];
+    let isDNS = !1, closed = !1, busy = !1, pT = 0, pendingPkt = 0;
     let flushPromise = Promise.resolve(), ssPromise = Promise.resolve();
     const ssEngine = new SS();
+    
+    // 绝对保留 1.4.4 最稳健的 mkQ 宏观排队结构
+    const uq = ((cap, mx, nx = CFG.upNMax) => {
+        const k = mkK(cap);
+        let n = 0;
+        return {
+            get empty() { return k.e(); },
+            get b() { return k.b; },
+            clear() { k.clear(); n = 0; },
+            sow: d => {
+                const z = d?.byteLength || 0;
+                if (!z || k.b + z > mx || n >= nx) return 0;
+                n++; return k.sow(d);
+            },
+            bundle: d => {
+                const r = k.pack(d);
+                n = Math.max(0, n - r[2]);
+                return r;
+            }
+        };
+    })(CFG.upPack, CFG.upQMax);
+
     let hsTimeout = setTimeout(() => { if (!pT) wither(1000); }, 15000);
 
     const wither = (code = 1000) => {
         if (!closed) {
-            closed = !0; dQueue = [];
+            closed = !0; uq.clear();
             if (hsTimeout) { clearTimeout(hsTimeout); hsTimeout = 0; }
             try { rw.writer?.close(); } catch { }
             rl(rw.writer); f12(rw.socket);
@@ -528,7 +475,8 @@ async function handleWS(req, proxyPool) {
     };
 
     const pushWsPkt = (data) => {
-        if (!rw.bw) {
+        // 移植点 5：严格拦截非 SS 流量被拉入加密，解决乱码导致真连接为 -1 的 Bug
+        if (pT !== 3) {
             if (server.readyState === WebSocket.OPEN) server.send(data);
             return;
         }
@@ -541,32 +489,32 @@ async function handleWS(req, proxyPool) {
                 } catch { }
             }
         }).catch(() => {});
+        return flushPromise;
     };
 
-    const flushClose = () => { flushPromise.then(() => { try { server.close(1000, ""); } catch { } }); };
+    const sow = d => {
+        const u = I(d);
+        if (u.byteLength) {
+            if (!uq.sow(u)) wither(1011);
+            thresh();
+        }
+    };
 
-    const processQueue = async () => {
-        if (!u && !closed) {
-            u = !0;
+    async function thresh() {
+        if (!busy && !closed) {
+            busy = !0;
             try {
-                for (; !closed ;) {
+                while (!closed) {
                     if (isDNS) {
-                        let t = dQueue.shift();
-                        if (!t) break;
-                        if (t.byteLength < CFG.upPack && dQueue.length) {
-                            const e = [t]; let n = t.byteLength;
-                            while (dQueue.length && n + dQueue[0].byteLength <= CFG.upPack) {
-                                const nxt = dQueue.shift(); e.push(nxt); n += nxt.byteLength;
-                            }
-                            if (e.length > 1) t = cat(...e);
-                        }
-                        await f27_dns(t, server);
+                        const [d] = uq.bundle();
+                        if (!d) break;
+                        await f27_dns(d, server);
                         continue;
                     }
                     if (!rw.socket) {
-                        const t = dQueue.shift();
-                        if (!t) break;
-                        const sess = parseSession(t, pT);
+                        const [d] = uq.bundle();
+                        if (!d) break;
+                        const sess = parseSession(d, pT);
                         if (!sess) throw 0;
                         if (sess.responsePrefix.byteLength && server.readyState === WebSocket.OPEN) server.send(sess.responsePrefix);
                         if (sess.udpDns) {
@@ -577,32 +525,37 @@ async function handleWS(req, proxyPool) {
                         }
                         const sock = await f26_pool(sess.host, sess.port, proxyPool);
                         if (!sock) throw 0;
-                        rw.socket = sock; rw.writer = sock.writable.getWriter();
-                        rw.bw = mkUpBatcher(rw.writer, () => wither(1011), CFG.upPack);
                         
-                        millWs(server, sock.readable, pushWsPkt, flushClose).catch(() => {});
-                        if (sess.payload.byteLength) rw.bw(sess.payload);
+                        if (closed) { f12(sock); return; }
+
+                        rw.socket = sock;
+                        rw.writer = sock.writable.getWriter();
+                        
+                        mill(sock.readable, server, ssEngine, 3 !== pT).catch(() => { });
+                        
+                        const [first] = uq.bundle(sess.payload);
+                        if (first?.byteLength) await rw.writer.write(first);
                         continue;
                     }
-                    const t = dQueue.shift();
-                    if (!t) break;
-                    rw.bw(t);
+                    const [d] = uq.bundle();
+                    if (!d) break;
+                    await rw.writer.write(d);
                 }
-            } catch { wither(1011); } finally { u = !1; if (!closed && dQueue.length) processQueue(); }
+            } catch { wither(1011); } finally { busy = !1; !uq.empty && !closed && thresh(); }
         }
-    };
+    }
 
     let initBuffer = null;
     const onMessage = data => {
         if (closed) return;
-        let chunk = I(data);
-        if (!chunk.byteLength) return;
+        let u = I(data);
+        if (!u.byteLength) return;
 
         if (!pT) {
-            initBuffer = initBuffer?.byteLength ? cat(initBuffer, chunk) : chunk;
+            initBuffer = initBuffer?.byteLength ? cat(initBuffer, u) : u;
             const probe = sniffSession(initBuffer);
             if (probe.session) {
-                pT = probe.type; chunk = initBuffer; initBuffer = null;
+                pT = probe.type; u = initBuffer; initBuffer = null;
                 if (hsTimeout) { clearTimeout(hsTimeout); hsTimeout = 0; }
             } else if (probe.error || initBuffer.byteLength >= CFG.hsMax) {
                 wither(1011); return;
@@ -612,17 +565,18 @@ async function handleWS(req, proxyPool) {
         }
 
         if (1 === pT || 2 === pT) {
-            dQueue.push(chunk); processQueue();
+            sow(u);
         } else {
             if (++pendingPkt > CFG.upNMax) return wither(1011);
             ssPromise = ssPromise.then(async () => {
-                try {
-                    if (!closed) {
-                        const err = await ssEngine.decData(chunk, p => { if (p.byteLength) dQueue.push(p); });
-                        if (err) return wither(1011);
-                        processQueue();
-                    }
-                } catch { wither(1011); } finally { pendingPkt--; }
+                if (!closed) {
+                    try {
+                        await ssEngine.decData(u, chunk => {
+                            if (chunk.byteLength) if(!uq.sow(chunk)) wither(1011);
+                        });
+                        thresh();
+                    } catch { wither(1011); } finally { pendingPkt--; }
+                }
             }).catch(() => { });
         }
     };
@@ -868,7 +822,7 @@ async function hSub(r, c, u, UA, h) {
         } catch { }
         return new Response("Err", { status: 502, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }
-    const p = new URLSearchParams();
+    const p = newSearchParams();
     p.append('uuid', myID);
     p.append("host", up);
     p.append("sni", h);
