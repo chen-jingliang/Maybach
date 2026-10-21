@@ -1,7 +1,7 @@
 //copy of snippets jacobax xhttp | 2026-10-07 16:28:45 | 1.4.9
 import{connect as t}from"cloudflare:sockets";
 
-const r="",n=65536,a=262144,s=2,i=8192,o=16384,c=32768,l=8192,h={"Content-Type":"application/octet-stream","grpc-status":"0","X-Accel-Buffering":"no","Cache-Control":"no-store"},u=new Map,y=new Map,w=new Map,f=new Array(20);
+const r="00000000-0000-4000-b000-000000000000",n=65536,a=131072,s=20,i=8192,o=16384,c=16384,l=8192,h={"Content-Type":"application/octet-stream","grpc-status":"0","X-Accel-Buffering":"no","Cache-Control":"no-store"},u=new Map,y=new Map,w=new Map,f=new Array(20);
 
 let d,p,b,g,m=0;
 const U=/^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)\.(25[0-5]|2[0-4]\d|[01]?\d\d?)$/,A=new Uint8Array(0),L=new TextDecoder,k=new TextEncoder,v=new Uint8Array([33,18,164,66]),P=new Uint8Array(20),S=k.encode("ss-subkey"),T=t=>15&(t>64?t+9:t),C=new Uint8Array(16);for(let t=0,e=0;t<16;t++){let n=r.charCodeAt(e++);45===n&&(n=r.charCodeAt(e++));let a=r.charCodeAt(e++);45===a&&(a=r.charCodeAt(e++)),C[t]=T(n)<<4|T(a)}
